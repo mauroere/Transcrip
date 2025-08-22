@@ -6,6 +6,3 @@ soundfile
 pandas
 openpyxl
 psutil
-
-# Optional: Audio conversion fallback
-moviepy>=1.0.3
