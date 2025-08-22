@@ -14,6 +14,13 @@ import pandas as pd
 from io import BytesIO
 import re
 
+# Importación condicional de psutil (para monitoreo del sistema)
+try:
+    import psutil  # type: ignore
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
 warnings.filterwarnings("ignore")
 
 # Configurar FFmpeg si está en directorio local
@@ -862,9 +869,17 @@ def main():
             
             # Información del sistema para Cloud
             if st.sidebar.checkbox("ℹ️ Info del Sistema", value=False):
-                import psutil
-                st.sidebar.info(f"📊 Memoria disponible: {psutil.virtual_memory().available / (1024**3):.1f} GB")
-                st.sidebar.info(f"🔧 Modelo optimizado para Cloud")
+                if PSUTIL_AVAILABLE:
+                    try:
+                        memory_gb = psutil.virtual_memory().available / (1024**3)
+                        st.sidebar.info(f"📊 Memoria disponible: {memory_gb:.1f} GB")
+                        st.sidebar.info("🔧 Modelo optimizado para Cloud")
+                    except Exception:
+                        st.sidebar.info("📊 Monitor de sistema temporalmente no disponible")
+                        st.sidebar.info("🔧 Modelo optimizado para Cloud")
+                else:
+                    st.sidebar.info("📊 Información del sistema no disponible en esta versión")
+                    st.sidebar.info("🔧 Modelo optimizado para Cloud")
                 
         except Exception as e:
             st.error(f"❌ Error inicializando sistema: {e}")
@@ -908,7 +923,7 @@ def main():
                 </a>
             </p>
             <p style="font-size: 0.8em; margin: 5px 0; opacity: 0.9;">
-                🚀 Soluciones IA para Movistar
+                🚀 Soluciones IA
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -1644,7 +1659,7 @@ if __name__ == "__main__":
     st.markdown("""
     <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #E10A68, #0066CC); 
                 color: white; border-radius: 10px; margin-top: 30px;">
-        <h3>🚀 Transcriptor de Audios - Movistar</h3>
+        <h3>🚀 Transcriptor de Audios</h3>
         <p style="margin: 10px 0;">
             <strong>Desarrollado por:</strong> Mauro Rementeria<br>
             <strong>Email:</strong> <a href="mailto:mauroere@gmail.com" style="color: #FFD700;">mauroere@gmail.com</a><br>
