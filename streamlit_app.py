@@ -69,14 +69,33 @@ os.makedirs(TRANSCRIPTIONS_FOLDER, exist_ok=True)
 # Cache del modelo Whisper
 @st.cache_resource
 def load_whisper_model():
-    """Cargar modelo Whisper con cache"""
+    """Cargar modelo Whisper con cache y manejo robusto de errores"""
     try:
         with st.spinner("🤖 Inicializando sistema de transcripción..."):
-            model = whisper.load_model("base")
-        # No mostrar mensaje de éxito - solo cargar silenciosamente
-        return model
+            # Intentar cargar el modelo base primero
+            try:
+                model = whisper.load_model("base")
+                # Verificar que el modelo se cargó correctamente
+                if model is not None:
+                    return model
+            except Exception as e:
+                st.warning(f"⚠️ Error con modelo 'base': {str(e)}")
+            
+            # Fallback: intentar con modelo tiny
+            try:
+                st.info("🔄 Intentando con modelo alternativo...")
+                model = whisper.load_model("tiny")
+                if model is not None:
+                    st.success("✅ Modelo alternativo cargado correctamente")
+                    return model
+            except Exception as e:
+                st.warning(f"⚠️ Error con modelo 'tiny': {str(e)}")
+            
+            # Si ambos fallan, devolver None
+            return None
+            
     except Exception as e:
-        st.error(f"❌ Error al cargar modelo Whisper: {str(e)}")
+        st.error(f"❌ Error crítico al cargar modelo Whisper: {str(e)}")
         return None
 
 def allowed_file(filename):
@@ -270,67 +289,114 @@ def clean_transcription_text(text):
     return final_text
 
 def transcribe_with_enhanced_quality(model, file_path):
-    """Transcripción mejorada con múltiples técnicas de optimización"""
+    """Transcripción mejorada con múltiples técnicas de optimización y fallbacks robustos"""
     try:
         # Verificar archivo
         if not os.path.exists(file_path):
             return None, f"Archivo no existe para transcripción: {file_path}"
         
-        # Paso 1: Mejorar calidad de audio
+        # Verificar tamaño del archivo
+        file_size = os.path.getsize(file_path)
+        if file_size == 0:
+            return None, "El archivo está vacío"
+        
+        # Paso 1: Mejorar calidad de audio (opcional)
         enhanced_path, enhance_error = enhance_audio_quality(file_path)
         if enhance_error:
-            st.warning(f"⚠️ No se pudo mejorar el audio: {enhance_error}")
-            enhanced_path = file_path
+            enhanced_path = file_path  # Usar archivo original si falla la mejora
         
-        # Paso 2: Transcripción con parámetros optimizados
-        try:
-            result = model.transcribe(
-                enhanced_path,
-                language="es",
-                task="transcribe",
-                temperature=0.0,  # Más determinista
-                beam_size=5,      # Mejor búsqueda
-                best_of=5,        # Mejores candidatos
-                patience=1.0,     # Paciencia en la búsqueda
-                word_timestamps=False,
-                fp16=False        # Mayor precisión
-            )
-            
-            raw_text = result["text"]
-            
-            # Paso 3: Limpiar y profesionalizar texto
-            cleaned_text = clean_transcription_text(raw_text)
-            
-            # Paso 4: Limpiar archivo temporal si se creó
-            if enhanced_path != file_path and os.path.exists(enhanced_path):
-                try:
-                    os.unlink(enhanced_path)
-                except:
-                    pass
-            
-            return cleaned_text, None
-            
-        except Exception as transcription_error:
-            # Fallback: Intentar con parámetros más simples
+        # Lista de configuraciones de transcripción (de más específico a más simple)
+        transcription_configs = [
+            # Configuración completa (primera opción)
+            {
+                "language": "es",
+                "task": "transcribe",
+                "temperature": 0.0,
+                "beam_size": 5,
+                "best_of": 5,
+                "patience": 1.0,
+                "word_timestamps": False,
+                "fp16": False
+            },
+            # Configuración media (segundo intento)
+            {
+                "language": "es",
+                "task": "transcribe",
+                "temperature": 0.2,
+                "fp16": False
+            },
+            # Configuración simple (tercer intento)
+            {
+                "language": "es",
+                "fp16": False
+            },
+            # Configuración mínima (último intento)
+            {
+                "language": "es"
+            },
+            # Sin idioma específico (fallback final)
+            {}
+        ]
+        
+        last_error = None
+        
+        # Intentar con diferentes configuraciones
+        for i, config in enumerate(transcription_configs):
             try:
-                result = model.transcribe(enhanced_path, language="es")
-                raw_text = result["text"]
-                cleaned_text = clean_transcription_text(raw_text)
+                # Mostrar progreso del intento
+                if i > 0:
+                    st.info(f"🔄 Intentando configuración alternativa {i+1}/5...")
                 
-                # Limpiar archivo temporal
-                if enhanced_path != file_path and os.path.exists(enhanced_path):
+                result = model.transcribe(enhanced_path, **config)
+                raw_text = result.get("text", "")
+                
+                if raw_text and raw_text.strip():
+                    # Paso 3: Limpiar y profesionalizar texto
+                    cleaned_text = clean_transcription_text(raw_text)
+                    
+                    # Limpiar archivo temporal si se creó
+                    if enhanced_path != file_path and os.path.exists(enhanced_path):
+                        try:
+                            os.unlink(enhanced_path)
+                        except:
+                            pass
+                    
+                    return cleaned_text, None
+                else:
+                    last_error = f"Transcripción vacía con configuración {i+1}"
+                    continue
+                    
+            except Exception as e:
+                error_msg = str(e)
+                last_error = f"Config {i+1}: {error_msg}"
+                
+                # Si es un error específico de tensores, intentar recargar el modelo
+                if "tensor" in error_msg.lower() or "size" in error_msg.lower():
                     try:
-                        os.unlink(enhanced_path)
+                        # Intentar forzar garbage collection
+                        import gc
+                        gc.collect()
+                        
+                        # Continuar con el siguiente config
+                        continue
                     except:
                         pass
                 
-                return cleaned_text, None
-                
-            except Exception as fallback_error:
-                return None, f"Error en transcripción: {str(fallback_error)}"
+                # Continuar con la siguiente configuración
+                continue
+        
+        # Si llegamos aquí, todos los intentos fallaron
+        return None, f"Error en todas las configuraciones de transcripción. Último error: {last_error}"
         
     except Exception as e:
         return None, f"Error general en transcripción: {str(e)}"
+    finally:
+        # Asegurar limpieza del archivo temporal
+        try:
+            if 'enhanced_path' in locals() and enhanced_path != file_path and os.path.exists(enhanced_path):
+                os.unlink(enhanced_path)
+        except:
+            pass
 
 def transcribe_with_fallback(model, file_path):
     """Mantener compatibilidad - usar nueva función mejorada"""
@@ -699,6 +765,94 @@ def generate_csv_report(result, analysis):
     df = pd.DataFrame([data])
     return df.to_csv(index=False)
 
+def create_copy_button(text, button_text, button_id, success_message="✅ Copiado al portapapeles"):
+    """Crear un botón de copiado que no cause rerun de Streamlit"""
+    # Escapar el texto para JavaScript
+    text_safe = text.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r').replace('"', '\\"').replace("'", "\\'")
+    
+    button_html = f"""
+    <div style="margin-bottom: 10px;">
+        <button onclick="copyText_{button_id}()" style="
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        " 
+        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)'"
+        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)'"
+        >{button_text}</button>
+    </div>
+    <script>
+    function copyText_{button_id}() {{
+        const text = `{text_safe}`;
+        if (navigator.clipboard && window.isSecureContext) {{
+            navigator.clipboard.writeText(text).then(function() {{
+                showSuccessMessage_{button_id}();
+            }}, function(err) {{
+                fallbackCopy_{button_id}(text);
+            }});
+        }} else {{
+            fallbackCopy_{button_id}(text);
+        }}
+    }}
+    
+    function fallbackCopy_{button_id}(text) {{
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {{
+            document.execCommand('copy');
+            showSuccessMessage_{button_id}();
+        }} catch (err) {{
+            alert('No se pudo copiar automáticamente. Por favor, copia manualmente del área de texto.');
+        }}
+        
+        document.body.removeChild(textArea);
+    }}
+    
+    function showSuccessMessage_{button_id}() {{
+        // Crear notificación temporal
+        const notification = document.createElement('div');
+        notification.innerHTML = '{success_message}';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        `;
+        document.body.appendChild(notification);
+        
+        // Remover notificación después de 3 segundos
+        setTimeout(function() {{
+            if (notification.parentNode) {{
+                notification.parentNode.removeChild(notification);
+            }}
+        }}, 3000);
+    }}
+    </script>
+    """
+    
+    return button_html
+
 def generate_word_report(result, analysis):
     """Generar reporte en formato HTML para Word"""
     filename = result.get('filename', 'Audio')
@@ -858,14 +1012,19 @@ def main():
         # Mostrar información del sistema
         st.subheader("🔧 Estado del Sistema")
         
-        # Cargar modelo con manejo optimizado de memoria
+        # Cargar modelo con manejo robusto de errores
         try:
             model = load_whisper_model()
             if model is None:
-                st.error("❌ Error: Modelo no pudo ser cargado")
+                st.error("❌ Error crítico: No se pudo cargar el sistema de transcripción")
+                st.warning("🔧 Posibles soluciones:")
+                st.markdown("- Verifica tu conexión a internet")
+                st.markdown("- Reinicia la aplicación")
+                st.markdown("- Contacta al desarrollador si el problema persiste")
                 st.stop()
-            # Solo mostrar que el sistema está listo, sin mencionar Whisper específicamente
-            st.success("✅ Sistema listo para transcribir")
+            
+            # Solo mostrar que el sistema está listo
+            st.success("✅ Sistema de transcripción inicializado correctamente")
             
             # Información del sistema para Cloud
             if st.sidebar.checkbox("ℹ️ Info del Sistema", value=False):
@@ -1078,9 +1237,24 @@ def main():
                         file_status.text(message)
                         time.sleep(0.3)  # Pausa para mostrar progreso
                     
-                    transcription, error = transcribe_with_fallback(model, tmp_path)
+                    # Uso de función mejorada con fallback robusto
+                    transcription, error = transcribe_with_enhanced_quality(model, tmp_path)
                     
                     if error:
+                        # Error específico con sugerencias
+                        st.error(f"❌ Error en transcripción de {uploaded_file.name}")
+                        st.markdown(f"**Detalle del error**: {error}")
+                        
+                        # Sugerencias según el tipo de error
+                        if "tensor" in error.lower():
+                            st.info("💡 **Sugerencia**: Problema de compatibilidad detectado. El archivo será procesado con configuración alternativa.")
+                        elif "memory" in error.lower():
+                            st.info("💡 **Sugerencia**: Archivo muy grande. Intenta con archivos más pequeños o divide el audio.")
+                        elif "format" in error.lower():
+                            st.info("💡 **Sugerencia**: Formato de audio no compatible. Intenta con MP3, WAV o M4A.")
+                        else:
+                            st.info("💡 **Sugerencia**: Error técnico. Verifica que el archivo no esté corrupto.")
+                        
                         results.append({
                             "filename": uploaded_file.name,
                             "success": False,
@@ -1211,8 +1385,16 @@ def display_result(result):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if st.button(f"📋 Copiar", key=f"copy_{result.get('file_id', 'unknown')}"):
-            st.info("💡 Usa Ctrl+A, Ctrl+C en el área de texto para copiar")
+        # Botón de copiado sin rerun usando la nueva función
+        transcript_text = result.get('transcription', '')
+        file_id = result.get('file_id', 'unknown').replace('-', '_')
+        copy_button_html = create_copy_button(
+            text=transcript_text,
+            button_text="📋 Copiar Transcripción",
+            button_id=f"transcript_{file_id}",
+            success_message="✅ Transcripción copiada al portapapeles"
+        )
+        st.markdown(copy_button_html, unsafe_allow_html=True)
     
     with col2:
         # Usar expander en lugar de session state para evitar reruns
@@ -1223,13 +1405,17 @@ def display_result(result):
                 result.get('filename', '')
             )
             
-            # Botón de copiar específico para el prompt
-            if st.button("📋 Copiar Prompt", key=f"copy_prompt_{result.get('file_id', 'unknown')}"):
-                # Mostrar el prompt en un formato fácil de copiar
-                st.code(prompt, language=None)
-                st.success("✅ Prompt mostrado arriba. Selecciona todo (Ctrl+A) y copia (Ctrl+C)")
+            # Botón de copiar para el prompt usando la nueva función
+            file_id = result.get('file_id', 'unknown').replace('-', '_')
+            copy_prompt_html = create_copy_button(
+                text=prompt,
+                button_text="📋 Copiar Prompt para IA",
+                button_id=f"prompt_{file_id}",
+                success_message="✅ Prompt copiado. ¡Pégalo en ChatGPT!"
+            )
+            st.markdown(copy_prompt_html, unsafe_allow_html=True)
             
-            st.info("📋 Copia el texto de abajo y pégalo en ChatGPT:")
+            st.info("📋 Usa el botón de arriba para copiar automáticamente, o selecciona el texto manualmente:")
             st.text_area(
                 "Prompt:", 
                 value=prompt, 
