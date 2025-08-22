@@ -102,9 +102,5 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 - Usa archivos de audio más cortos (< 10 minutos)
 - Considera usar el modelo Whisper "tiny" para mayor velocidad
 
-## Contribuir
-
-Este proyecto está diseñado específicamente para Movistar. Para mejoras o personalizaciones, contacta al equipo de desarrollo.
-
 ## Licencia
-
+MIT

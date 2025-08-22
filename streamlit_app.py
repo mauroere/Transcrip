@@ -838,6 +838,9 @@ def main():
     <div class="main-header">
         <h1>🎙️ Transcriptor de Audios</h1>
         <p>Análisis Avanzado de Performance para Asesores de Atención al Cliente</p>
+        <div style="text-align: right; margin-top: 10px; font-size: 0.8em; opacity: 0.8;">
+            <i>Desarrollado por <strong>Mauro Rementeria</strong> | mauroere@gmail.com</i>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -891,6 +894,24 @@ def main():
         • **Resolución de Problemas**
         • **Palabras Clave**
         """)
+        
+        # Créditos del desarrollador
+        st.markdown("---")
+        st.markdown("""
+        <div style="text-align: center; padding: 15px; background: linear-gradient(135deg, #E10A68, #0066CC); 
+                    color: white; border-radius: 8px; margin-top: 20px;">
+            <h4 style="margin: 0;">👨‍💻 Desarrollador</h4>
+            <p style="margin: 5px 0; font-size: 0.9em;">
+                <strong>Mauro Rementeria</strong><br>
+                <a href="mailto:mauroere@gmail.com" style="color: #FFD700; text-decoration: none;">
+                    📧 mauroere@gmail.com
+                </a>
+            </p>
+            <p style="font-size: 0.8em; margin: 5px 0; opacity: 0.9;">
+                🚀 Soluciones IA para Movistar
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Área principal
     uploaded_files = st.file_uploader(
@@ -1617,3 +1638,25 @@ def display_error_result(result):
 
 if __name__ == "__main__":
     main()
+    
+    # Footer profesional con créditos del desarrollador
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #E10A68, #0066CC); 
+                color: white; border-radius: 10px; margin-top: 30px;">
+        <h3>🚀 Transcriptor de Audios - Movistar</h3>
+        <p style="margin: 10px 0;">
+            <strong>Desarrollado por:</strong> Mauro Rementeria<br>
+            <strong>Email:</strong> <a href="mailto:mauroere@gmail.com" style="color: #FFD700;">mauroere@gmail.com</a><br>
+            <strong>Tecnologías:</strong> Python | Streamlit | OpenAI Whisper | IA
+        </p>
+        <p style="font-size: 0.9em; opacity: 0.9; margin-top: 15px;">
+            ⚡ Transcripción profesional con análisis de performance | 
+            🎯 Optimizado para atención al cliente | 
+            📊 Insights automatizados
+        </p>
+        <p style="font-size: 0.8em; margin-top: 10px;">
+            © 2025 - Todos los derechos reservados
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
