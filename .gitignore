@@ -11,6 +11,9 @@ transcriptions/
 *.ogg
 *.webm
 
+# FFmpeg (muy grande para GitHub - se instala via packages.txt en Cloud)
+ffmpeg/
+
 # Python
 *.pyc
 __pycache__/
