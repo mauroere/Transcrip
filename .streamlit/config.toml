@@ -1,0 +1,23 @@
+[general]
+# Configuración general de la aplicación
+headless = false
+
+[server]
+# Configuración del servidor
+port = 8501
+enableCORS = false
+enableXsrfProtection = false
+maxUploadSize = 100
+
+[theme]
+# Tema personalizado
+primaryColor = "#FF6B6B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"
+
+[browser]
+# Configuración del navegador
+gatherUsageStats = false
+showErrorDetails = true

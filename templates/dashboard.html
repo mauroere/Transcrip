@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - Transcriptor de Audios</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      .movistar-header {
+        background: linear-gradient(135deg, #ff6b6b, #4ecdc4);
+        color: white;
+        padding: 20px 0;
+      }
+      .stat-card {
+        border: none;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+      }
+      .chart-container {
+        position: relative;
+        height: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="movistar-header">
+      <div class="container">
+        <div class="row align-items-center">
+          <div class="col-md-8">
+            <h1><i class="fas fa-chart-bar me-3"></i>Dashboard de Análisis</h1>
+            <p class="mb-0">
+              Resumen de transcripciones y análisis de llamadas
+            </p>
+          </div>
+          <div class="col-md-4 text-end">
+            <a href="/" class="btn btn-outline-light">
+              <i class="fas fa-microphone-alt me-2"></i>Transcribir Audios
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="container mt-4">
+      <!-- Estadísticas Generales -->
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card stat-card text-center">
+            <div class="card-body">
+              <i class="fas fa-file-audio fa-2x text-primary mb-2"></i>
+              <h4 id="totalFiles" class="text-primary">0</h4>
+              <p class="mb-0">Archivos Procesados</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center">
+            <div class="card-body">
+              <i class="fas fa-clock fa-2x text-success mb-2"></i>
+              <h4 id="totalDuration" class="text-success">0 min</h4>
+              <p class="mb-0">Duración Total</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center">
+            <div class="card-body">
+              <i class="fas fa-comments fa-2x text-warning mb-2"></i>
+              <h4 id="totalWords" class="text-warning">0</h4>
+              <p class="mb-0">Palabras Totales</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center">
+            <div class="card-body">
+              <i class="fas fa-smile fa-2x text-info mb-2"></i>
+              <h4 id="avgSentiment" class="text-info">0%</h4>
+              <p class="mb-0">Sentimiento Positivo</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gráficos -->
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h5>
+                <i class="fas fa-key me-2"></i>Palabras Clave Más Frecuentes
+              </h5>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <canvas id="keywordsChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h5><i class="fas fa-heart me-2"></i>Análisis de Sentimientos</h5>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <canvas id="sentimentChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de Transcripciones Recientes -->
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div
+              class="card-header d-flex justify-content-between align-items-center"
+            >
+              <h5><i class="fas fa-list me-2"></i>Transcripciones Recientes</h5>
+              <button class="btn btn-sm btn-primary" onclick="refreshData()">
+                <i class="fas fa-sync-alt me-1"></i>Actualizar
+              </button>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-hover">
+                  <thead>
+                    <tr>
+                      <th>Archivo</th>
+                      <th>Fecha</th>
+                      <th>Duración</th>
+                      <th>Palabras</th>
+                      <th>Problemas Técnicos</th>
+                      <th>Sentimiento</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="transcriptionsTable">
+                    <!-- Los datos se cargarán dinámicamente -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      let keywordsChart, sentimentChart;
+
+      document.addEventListener("DOMContentLoaded", function () {
+        initializeCharts();
+        loadDashboardData();
+      });
+
+      function initializeCharts() {
+        // Gráfico de palabras clave
+        const keywordsCtx = document
+          .getElementById("keywordsChart")
+          .getContext("2d");
+        keywordsChart = new Chart(keywordsCtx, {
+          type: "bar",
+          data: {
+            labels: [
+              "Saludos",
+              "Agradecimientos",
+              "Disculpas",
+              "Servicios",
+              "Problemas",
+            ],
+            datasets: [
+              {
+                label: "Frecuencia",
+                data: [0, 0, 0, 0, 0],
+                backgroundColor: [
+                  "#FF6B6B",
+                  "#4ECDC4",
+                  "#45B7D1",
+                  "#96CEB4",
+                  "#FECA57",
+                ],
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: false,
+              },
+            },
+          },
+        });
+
+        // Gráfico de sentimientos
+        const sentimentCtx = document
+          .getElementById("sentimentChart")
+          .getContext("2d");
+        sentimentChart = new Chart(sentimentCtx, {
+          type: "doughnut",
+          data: {
+            labels: ["Positivo", "Negativo", "Neutral"],
+            datasets: [
+              {
+                data: [0, 0, 100],
+                backgroundColor: ["#28a745", "#dc3545", "#6c757d"],
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+          },
+        });
+      }
+
+      function loadDashboardData() {
+        fetch("/transcriptions")
+          .then((response) => response.json())
+          .then((data) => {
+            updateStatistics(data.transcriptions);
+            updateTable(data.transcriptions);
+            loadDetailedAnalysis(data.transcriptions);
+          })
+          .catch((error) => {
+            console.error("Error cargando datos:", error);
+          });
+      }
+
+      function updateStatistics(transcriptions) {
+        const totalFiles = transcriptions.length;
+        const totalDuration = transcriptions.reduce(
+          (sum, t) => sum + t.estimated_duration,
+          0
+        );
+        const totalWords = transcriptions.reduce(
+          (sum, t) => sum + t.word_count,
+          0
+        );
+
+        document.getElementById("totalFiles").textContent = totalFiles;
+        document.getElementById("totalDuration").textContent =
+          Math.round(totalDuration * 10) / 10 + " min";
+        document.getElementById("totalWords").textContent =
+          totalWords.toLocaleString();
+      }
+
+      function updateTable(transcriptions) {
+        const tableBody = document.getElementById("transcriptionsTable");
+        tableBody.innerHTML = "";
+
+        transcriptions.slice(0, 10).forEach((transcription) => {
+          const row = document.createElement("tr");
+          const date = new Date(transcription.timestamp).toLocaleDateString(
+            "es-ES"
+          );
+
+          row.innerHTML = `
+                    <td>
+                        <i class="fas fa-file-audio me-2 text-primary"></i>
+                        ${transcription.original_filename}
+                    </td>
+                    <td>${date}</td>
+                    <td>${
+                      Math.round(transcription.estimated_duration * 10) / 10
+                    } min</td>
+                    <td>${transcription.word_count}</td>
+                    <td><span class="badge bg-warning" id="problems-${
+                      transcription.file_id
+                    }">-</span></td>
+                    <td><span class="badge bg-info" id="sentiment-${
+                      transcription.file_id
+                    }">-</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="viewDetails('${
+                          transcription.file_id
+                        }')">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadFile('${
+                          transcription.file_id
+                        }', '${transcription.original_filename}')">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </td>
+                `;
+          tableBody.appendChild(row);
+        });
+      }
+
+      function loadDetailedAnalysis(transcriptions) {
+        Promise.all(
+          transcriptions.map((t) =>
+            fetch(`/transcription/${t.file_id}`).then((response) =>
+              response.json()
+            )
+          )
+        ).then((detailedData) => {
+          const keywordTotals = {
+            saludos: 0,
+            agradecimientos: 0,
+            disculpas: 0,
+            servicios_movistar: 0,
+            problemas_tecnicos: 0,
+          };
+
+          let totalPositive = 0;
+          let totalNegative = 0;
+
+          detailedData.forEach((data, index) => {
+            if (data.analysis) {
+              // Actualizar totales de palabras clave
+              Object.keys(keywordTotals).forEach((key) => {
+                keywordTotals[key] += data.analysis.keywords[key] || 0;
+              });
+
+              // Actualizar sentimientos
+              totalPositive += data.analysis.sentiment_indicators.positive || 0;
+              totalNegative += data.analysis.sentiment_indicators.negative || 0;
+
+              // Actualizar tabla individual
+              const transcription = transcriptions[index];
+              if (transcription) {
+                const problemsElement = document.getElementById(
+                  `problems-${transcription.file_id}`
+                );
+                const sentimentElement = document.getElementById(
+                  `sentiment-${transcription.file_id}`
+                );
+
+                if (problemsElement) {
+                  problemsElement.textContent =
+                    data.analysis.keywords.problemas_tecnicos || 0;
+                }
+
+                if (sentimentElement) {
+                  const positive =
+                    data.analysis.sentiment_indicators.positive || 0;
+                  const negative =
+                    data.analysis.sentiment_indicators.negative || 0;
+                  const total = positive + negative;
+                  const positivePercent =
+                    total > 0 ? Math.round((positive / total) * 100) : 0;
+                  sentimentElement.textContent = `${positivePercent}% +`;
+                  sentimentElement.className =
+                    positivePercent > 50
+                      ? "badge bg-success"
+                      : "badge bg-danger";
+                }
+              }
+            }
+          });
+
+          // Actualizar gráficos
+          keywordsChart.data.datasets[0].data = [
+            keywordTotals.saludos,
+            keywordTotals.agradecimientos,
+            keywordTotals.disculpas,
+            keywordTotals.servicios_movistar,
+            keywordTotals.problemas_tecnicos,
+          ];
+          keywordsChart.update();
+
+          const totalSentiment = totalPositive + totalNegative;
+          const neutralPercent = Math.max(
+            0,
+            100 - ((totalPositive + totalNegative) / transcriptions.length) * 10
+          );
+
+          sentimentChart.data.datasets[0].data = [
+            totalPositive,
+            totalNegative,
+            neutralPercent,
+          ];
+          sentimentChart.update();
+
+          // Actualizar estadística de sentimiento promedio
+          const avgPositive =
+            totalSentiment > 0
+              ? Math.round((totalPositive / totalSentiment) * 100)
+              : 0;
+          document.getElementById("avgSentiment").textContent =
+            avgPositive + "%";
+        });
+      }
+
+      function viewDetails(fileId) {
+        fetch(`/transcription/${fileId}`)
+          .then((response) => response.json())
+          .then((data) => {
+            // Crear modal con detalles
+            const modalHtml = `
+                    <div class="modal fade" id="detailsModal" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">
+                                        <i class="fas fa-file-audio me-2"></i>
+                                        ${data.original_filename}
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <strong>Palabras:</strong> ${
+                                              data.analysis.word_count
+                                            }<br>
+                                            <strong>Duración estimada:</strong> ${
+                                              Math.round(
+                                                data.analysis
+                                                  .estimated_duration * 10
+                                              ) / 10
+                                            } min<br>
+                                            <strong>Fecha:</strong> ${new Date(
+                                              data.timestamp
+                                            ).toLocaleString("es-ES")}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Problemas técnicos:</strong> ${
+                                              data.analysis.keywords
+                                                .problemas_tecnicos
+                                            }<br>
+                                            <strong>Servicios Movistar:</strong> ${
+                                              data.analysis.keywords
+                                                .servicios_movistar
+                                            }<br>
+                                            <strong>Agradecimientos:</strong> ${
+                                              data.analysis.keywords
+                                                .agradecimientos
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <strong>Transcripción completa:</strong>
+                                        <div class="border rounded p-3 bg-light" style="max-height: 300px; overflow-y: auto;">
+                                            ${data.transcription}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                                    <button type="button" class="btn btn-primary" onclick="copyTranscription('${
+                                      data.transcription
+                                    }')">
+                                        <i class="fas fa-copy me-1"></i>Copiar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+            // Eliminar modal existente si existe
+            const existingModal = document.getElementById("detailsModal");
+            if (existingModal) {
+              existingModal.remove();
+            }
+
+            document.body.insertAdjacentHTML("beforeend", modalHtml);
+            const modal = new bootstrap.Modal(
+              document.getElementById("detailsModal")
+            );
+            modal.show();
+          });
+      }
+
+      function downloadFile(fileId, filename) {
+        fetch(`/transcription/${fileId}`)
+          .then((response) => response.json())
+          .then((data) => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], {
+              type: "application/json",
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `transcripcion_${filename.split(".")[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          });
+      }
+
+      function copyTranscription(text) {
+        navigator.clipboard.writeText(text).then(() => {
+          const toast = document.createElement("div");
+          toast.className = "toast position-fixed bottom-0 end-0 m-3";
+          toast.innerHTML = `
+                    <div class="toast-body bg-success text-white">
+                        <i class="fas fa-check me-2"></i>Transcripción copiada al portapapeles
+                    </div>
+                `;
+          document.body.appendChild(toast);
+          const bsToast = new bootstrap.Toast(toast);
+          bsToast.show();
+          setTimeout(() => toast.remove(), 3000);
+        });
+      }
+
+      function refreshData() {
+        loadDashboardData();
+      }
+    </script>
+  </body>
+</html>
