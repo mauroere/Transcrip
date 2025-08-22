@@ -848,7 +848,7 @@ def main():
         # Mostrar información del sistema
         st.subheader("🔧 Estado del Sistema")
         
-        # Cargar modelo
+        # Cargar modelo con manejo optimizado de memoria
         try:
             model = load_whisper_model()
             if model is None:
@@ -856,6 +856,13 @@ def main():
                 st.stop()
             # Solo mostrar que el sistema está listo, sin mencionar Whisper específicamente
             st.success("✅ Sistema listo para transcribir")
+            
+            # Información del sistema para Cloud
+            if st.sidebar.checkbox("ℹ️ Info del Sistema", value=False):
+                import psutil
+                st.sidebar.info(f"📊 Memoria disponible: {psutil.virtual_memory().available / (1024**3):.1f} GB")
+                st.sidebar.info(f"🔧 Modelo optimizado para Cloud")
+                
         except Exception as e:
             st.error(f"❌ Error inicializando sistema: {e}")
             st.stop()

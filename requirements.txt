@@ -1,20 +1,25 @@
-Flask>=2.3.0
-Werkzeug>=2.3.0
-openai-whisper>=20240930
-pydub>=0.25.1
-torch>=2.0.0
-torchaudio>=2.0.0
-moviepy>=1.0.3
-Jinja2>=3.1.0
-MarkupSafe>=2.1.0
-itsdangerous>=2.1.0
-click>=8.1.0
-blinker>=1.6.0
-ffmpeg-python>=0.2.0
+# Core Streamlit requirements
 streamlit>=1.28.0
+
+# Audio processing and transcription
+openai-whisper>=20240930
 librosa>=0.10.0
 soundfile>=0.12.0
+
+# Data processing
 pandas>=2.0.0
-openpyxl>=3.1.0
 numpy>=1.21.0,<2.2.0
 numba>=0.56.0
+
+# System monitoring
+psutil>=5.9.0
+
+# File processing
+openpyxl>=3.1.0
+
+# PyTorch (CPU version for cloud deployment)
+torch>=2.0.0,<2.2.0
+torchaudio>=2.0.0,<2.2.0
+
+# Optional: Audio conversion fallback
+moviepy>=1.0.3

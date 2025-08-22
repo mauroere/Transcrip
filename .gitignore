@@ -1,0 +1,48 @@
+# Archivos de audio (pueden ser grandes)
+uploads/
+transcriptions/
+*.wav
+*.mp3
+*.mp4
+*.avi
+*.mov
+*.flac
+*.m4a
+*.ogg
+*.webm
+
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Entornos virtuales
+.env
+.venv/
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs y temporales
+*.log
+temp/
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+# FFmpeg local (usar packages.txt para cloud)
+ffmpeg/
+
+# Archivos de sistema
+*.tmp
+*.temp

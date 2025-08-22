@@ -1,23 +1,24 @@
 [general]
-# Configuración general de la aplicación
-headless = false
+# Configuración optimizada para Streamlit Cloud
+dataFrameSerialization = "legacy"
 
 [server]
-# Configuración del servidor
+# Configuración del servidor para Cloud
 port = 8501
 enableCORS = false
 enableXsrfProtection = false
-maxUploadSize = 100
+maxUploadSize = 200
+maxMessageSize = 200
+enableWebsocketCompression = false
 
 [theme]
-# Tema personalizado
-primaryColor = "#FF6B6B"
+# Tema corporativo Movistar
+primaryColor = "#E10A68"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F2F6"
+secondaryBackgroundColor = "#F8F9FA"
 textColor = "#262730"
 font = "sans serif"
 
 [browser]
-# Configuración del navegador
+# Configuración del navegador para producción
 gatherUsageStats = false
-showErrorDetails = true
