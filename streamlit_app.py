@@ -1173,7 +1173,7 @@ def display_result(result):
     
     with col2:
         # Usar expander en lugar de session state para evitar reruns
-        with st.expander("🤖 Prompt ChatGPT"):
+        with st.expander("🤖 ANALIZAR CON IA"):
             prompt = generate_chatgpt_prompt(
                 result.get('transcription', ''),
                 result.get('analysis', {}),
