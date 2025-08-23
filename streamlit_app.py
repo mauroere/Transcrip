@@ -289,7 +289,7 @@ def clean_transcription_text(text):
     return final_text
 
 def transcribe_with_enhanced_quality(model, file_path):
-    """Transcripción mejorada con múltiples técnicas de optimización y fallbacks robustos"""
+    """Transcripción mejorada con manejo específico de errores de tensor y múltiples estrategias de recuperación"""
     try:
         # Verificar archivo
         if not os.path.exists(file_path):
@@ -300,103 +300,200 @@ def transcribe_with_enhanced_quality(model, file_path):
         if file_size == 0:
             return None, "El archivo está vacío"
         
-        # Paso 1: Mejorar calidad de audio (opcional)
-        enhanced_path, enhance_error = enhance_audio_quality(file_path)
-        if enhance_error:
-            enhanced_path = file_path  # Usar archivo original si falla la mejora
-        
-        # Lista de configuraciones de transcripción (de más específico a más simple)
-        transcription_configs = [
-            # Configuración completa (primera opción)
+        # Estrategias de procesamiento ordenadas de más a menos agresivas
+        processing_strategies = [
             {
-                "language": "es",
-                "task": "transcribe",
-                "temperature": 0.0,
-                "beam_size": 5,
-                "best_of": 5,
-                "patience": 1.0,
-                "word_timestamps": False,
-                "fp16": False
+                "name": "Archivo Original + Configuración Completa",
+                "use_enhanced": False,
+                "configs": [
+                    {"language": "es", "task": "transcribe", "temperature": 0.0, "beam_size": 5, "best_of": 5, "fp16": False},
+                    {"language": "es", "task": "transcribe", "temperature": 0.2, "fp16": False},
+                    {"language": "es", "fp16": False},
+                    {"language": "es"}
+                ]
             },
-            # Configuración media (segundo intento)
             {
-                "language": "es",
-                "task": "transcribe",
-                "temperature": 0.2,
-                "fp16": False
+                "name": "Audio Mejorado + Configuración Robusta",
+                "use_enhanced": True,
+                "configs": [
+                    {"language": "es", "temperature": 0.1, "fp16": False},
+                    {"language": "es", "fp16": False},
+                    {"language": "es"}
+                ]
             },
-            # Configuración simple (tercer intento)
             {
-                "language": "es",
-                "fp16": False
+                "name": "Procesamiento Mínimo + Configuraciones Básicas",
+                "use_enhanced": False,
+                "configs": [
+                    {"language": "es"},
+                    {"task": "transcribe"},
+                    {}
+                ]
             },
-            # Configuración mínima (último intento)
             {
-                "language": "es"
-            },
-            # Sin idioma específico (fallback final)
-            {}
+                "name": "Estrategia de Emergencia - Segmentación",
+                "use_enhanced": False,
+                "configs": [{"language": "es"}],
+                "segment_audio": True
+            }
         ]
         
         last_error = None
         
-        # Intentar con diferentes configuraciones
-        for i, config in enumerate(transcription_configs):
+        for strategy_idx, strategy in enumerate(processing_strategies):
             try:
-                # Mostrar progreso del intento
-                if i > 0:
-                    st.info(f"🔄 Intentando configuración alternativa {i+1}/5...")
-                
-                result = model.transcribe(enhanced_path, **config)
-                raw_text = result.get("text", "")
-                
-                if raw_text and raw_text.strip():
-                    # Paso 3: Limpiar y profesionalizar texto
-                    cleaned_text = clean_transcription_text(raw_text)
-                    
-                    # Limpiar archivo temporal si se creó
-                    if enhanced_path != file_path and os.path.exists(enhanced_path):
-                        try:
-                            os.unlink(enhanced_path)
-                        except:
-                            pass
-                    
-                    return cleaned_text, None
+                # Determinar qué archivo usar
+                if strategy["use_enhanced"]:
+                    enhanced_path, enhance_error = enhance_audio_quality(file_path)
+                    if enhance_error:
+                        continue  # Saltar esta estrategia si falla la mejora
+                    target_path = enhanced_path
                 else:
-                    last_error = f"Transcripción vacía con configuración {i+1}"
-                    continue
-                    
-            except Exception as e:
-                error_msg = str(e)
-                last_error = f"Config {i+1}: {error_msg}"
+                    target_path = file_path
                 
-                # Si es un error específico de tensores, intentar recargar el modelo
-                if "tensor" in error_msg.lower() or "size" in error_msg.lower():
+                # Mostrar progreso de estrategia
+                if strategy_idx > 0:
+                    st.warning(f"🔄 Estrategia {strategy_idx + 1}: {strategy['name']}")
+                
+                # Procesamiento especial para segmentación
+                if strategy.get("segment_audio", False):
+                    result_text = process_audio_segments(model, target_path, strategy["configs"][0])
+                    if result_text:
+                        return clean_transcription_text(result_text), None
+                    else:
+                        last_error = f"Estrategia {strategy_idx + 1}: Segmentación falló"
+                        continue
+                
+                # Probar configuraciones normales
+                for config_idx, config in enumerate(strategy["configs"]):
                     try:
-                        # Intentar forzar garbage collection
+                        # Limpiar memoria antes de cada intento
                         import gc
                         gc.collect()
                         
-                        # Continuar con el siguiente config
+                        # Mensaje específico para errores de tensor
+                        if "tensor" in str(last_error).lower() and config_idx == 0:
+                            st.info("🧠 Aplicando solución para compatibilidad de tensores...")
+                        
+                        result = model.transcribe(target_path, **config)
+                        raw_text = result.get("text", "")
+                        
+                        if raw_text and raw_text.strip():
+                            # Limpiar archivo temporal si se creó
+                            if strategy["use_enhanced"] and target_path != file_path and os.path.exists(target_path):
+                                try:
+                                    os.unlink(target_path)
+                                except:
+                                    pass
+                            
+                            cleaned_text = clean_transcription_text(raw_text)
+                            st.success(f"✅ Transcripción exitosa con {strategy['name']}")
+                            return cleaned_text, None
+                        else:
+                            last_error = f"Estrategia {strategy_idx + 1}, Config {config_idx + 1}: Texto vacío"
+                            continue
+                            
+                    except Exception as e:
+                        error_msg = str(e)
+                        last_error = f"Estrategia {strategy_idx + 1}, Config {config_idx + 1}: {error_msg}"
+                        
+                        # Manejo específico de errores de tensor
+                        if "tensor" in error_msg.lower() or "size" in error_msg.lower():
+                            st.warning(f"⚠️ Error de tensor detectado en configuración {config_idx + 1}")
+                            # Forzar limpieza agresiva de memoria
+                            try:
+                                import gc
+                                import torch
+                                gc.collect()
+                                if torch.cuda.is_available():
+                                    torch.cuda.empty_cache()
+                            except:
+                                pass
+                            continue
+                        
+                        # Para otros errores, continuar con siguiente configuración
                         continue
+                
+                # Limpiar archivo temporal de esta estrategia
+                if strategy["use_enhanced"] and target_path != file_path and os.path.exists(target_path):
+                    try:
+                        os.unlink(target_path)
                     except:
                         pass
-                
-                # Continuar con la siguiente configuración
+                        
+            except Exception as e:
+                last_error = f"Estrategia {strategy_idx + 1}: {str(e)}"
                 continue
         
-        # Si llegamos aquí, todos los intentos fallaron
-        return None, f"Error en todas las configuraciones de transcripción. Último error: {last_error}"
+        # Si llegamos aquí, todas las estrategias fallaron
+        return None, f"Error en todas las estrategias de transcripción. Último error: {last_error}"
         
     except Exception as e:
-        return None, f"Error general en transcripción: {str(e)}"
-    finally:
-        # Asegurar limpieza del archivo temporal
-        try:
-            if 'enhanced_path' in locals() and enhanced_path != file_path and os.path.exists(enhanced_path):
-                os.unlink(enhanced_path)
-        except:
-            pass
+        return None, f"Error crítico en transcripción: {str(e)}"
+
+def process_audio_segments(model, file_path, config):
+    """Procesar audio en segmentos para evitar errores de tensor en archivos largos"""
+    try:
+        import librosa
+        import soundfile as sf
+        import tempfile
+        
+        # Cargar audio completo
+        y, sr = librosa.load(file_path, sr=16000, mono=True)
+        
+        # Calcular duración
+        duration = len(y) / sr
+        
+        # Si es muy corto, procesar normalmente
+        if duration < 30:
+            return None
+        
+        # Dividir en segmentos de 30 segundos con overlap de 2 segundos
+        segment_length = 30 * sr  # 30 segundos
+        overlap = 2 * sr  # 2 segundos de overlap
+        step = segment_length - overlap
+        
+        segments_text = []
+        
+        for start in range(0, len(y), step):
+            end = min(start + segment_length, len(y))
+            segment = y[start:end]
+            
+            # Saltar segmentos muy cortos
+            if len(segment) < sr:  # Menos de 1 segundo
+                continue
+            
+            # Guardar segmento temporal
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+                sf.write(tmp_file.name, segment, sr)
+                tmp_path = tmp_file.name
+            
+            try:
+                # Transcribir segmento
+                result = model.transcribe(tmp_path, **config)
+                segment_text = result.get("text", "").strip()
+                
+                if segment_text:
+                    segments_text.append(segment_text)
+                    
+            except Exception as e:
+                # Si falla un segmento, continuar con el siguiente
+                pass
+            finally:
+                # Limpiar archivo temporal
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+        
+        # Unir todos los segmentos
+        if segments_text:
+            return " ".join(segments_text)
+        else:
+            return None
+            
+    except Exception as e:
+        return None
 
 def transcribe_with_fallback(model, file_path):
     """Mantener compatibilidad - usar nueva función mejorada"""
@@ -1241,19 +1338,56 @@ def main():
                     transcription, error = transcribe_with_enhanced_quality(model, tmp_path)
                     
                     if error:
-                        # Error específico con sugerencias
+                        # Error específico con sugerencias mejoradas
                         st.error(f"❌ Error en transcripción de {uploaded_file.name}")
                         st.markdown(f"**Detalle del error**: {error}")
                         
-                        # Sugerencias según el tipo de error
-                        if "tensor" in error.lower():
-                            st.info("💡 **Sugerencia**: Problema de compatibilidad detectado. El archivo será procesado con configuración alternativa.")
-                        elif "memory" in error.lower():
-                            st.info("💡 **Sugerencia**: Archivo muy grande. Intenta con archivos más pequeños o divide el audio.")
-                        elif "format" in error.lower():
-                            st.info("💡 **Sugerencia**: Formato de audio no compatible. Intenta con MP3, WAV o M4A.")
+                        # Análisis específico del error para dar mejores sugerencias
+                        error_lower = error.lower()
+                        
+                        if "tensor" in error_lower and "size" in error_lower:
+                            st.warning("� **Problema de Compatibilidad de Tensor Detectado**")
+                            st.info("""
+                            💡 **Sugerencias para resolver este error**:
+                            • Este archivo tiene una estructura que causa conflictos de tensor
+                            • Intenta convertir el audio a formato WAV con menor calidad
+                            • Reduce la duración del archivo (divide en partes más pequeñas)
+                            • Usa un software como Audacity para re-exportar el audio
+                            """)
+                            
+                        elif "memory" in error_lower:
+                            st.info("""
+                            💡 **Problema de Memoria**:
+                            • El archivo es muy grande para procesar
+                            • Intenta con archivos más pequeños (menos de 10 minutos)
+                            • Divide el audio en segmentos más cortos
+                            """)
+                            
+                        elif "format" in error_lower:
+                            st.info("""
+                            💡 **Problema de Formato**:
+                            • El formato de audio no es compatible
+                            • Convierte a MP3, WAV o M4A
+                            • Verifica que el archivo no esté corrupto
+                            """)
+                            
+                        elif "estrategia" in error_lower:
+                            st.warning("⚠️ **Error en Todas las Estrategias**")
+                            st.info("""
+                            💡 **Opciones disponibles**:
+                            • El archivo puede estar corrupto o tener un formato problemático
+                            • Intenta re-grabar o re-exportar el audio
+                            • Usa un formato más estándar como MP3 o WAV
+                            • Verifica que el audio contenga voz humana claramente audible
+                            """)
                         else:
-                            st.info("💡 **Sugerencia**: Error técnico. Verifica que el archivo no esté corrupto.")
+                            st.info("""
+                            💡 **Sugerencias generales**:
+                            • Verifica que el archivo contenga audio válido
+                            • Intenta con un formato diferente (MP3, WAV, M4A)
+                            • Asegúrate de que el audio no esté corrupto
+                            • Reduce el ruido de fondo si es posible
+                            """)
                         
                         results.append({
                             "filename": uploaded_file.name,
