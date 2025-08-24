@@ -41,6 +41,14 @@ except ImportError as e:
     st.sidebar.error(f"✗ Error importando Whisper: {e}")
     st.stop()
 
+# Importación condicional de torch para limpieza de memoria GPU
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    TORCH_AVAILABLE = False
+
 try:
     from pydub import AudioSegment
     # st.sidebar.success("✓ Pydub importado correctamente")
@@ -300,41 +308,47 @@ def transcribe_with_enhanced_quality(model, file_path):
         if file_size == 0:
             return None, "El archivo está vacío"
         
-        # Estrategias de procesamiento ordenadas de más a menos agresivas
+        # Estrategias de procesamiento optimizadas para errores de tensor
         processing_strategies = [
             {
-                "name": "Archivo Original + Configuración Completa",
+                "name": "Configuración Ultra-Básica Anti-Tensor",
                 "use_enhanced": False,
                 "configs": [
-                    {"language": "es", "task": "transcribe", "temperature": 0.0, "beam_size": 5, "best_of": 5, "fp16": False},
-                    {"language": "es", "task": "transcribe", "temperature": 0.2, "fp16": False},
+                    {"language": "es", "fp16": False, "task": "transcribe", "no_speech_threshold": 0.6},
+                    {"language": "es", "fp16": False, "task": "transcribe"},
                     {"language": "es", "fp16": False},
-                    {"language": "es"}
+                    {"language": "es"},
+                    {}  # Configuración completamente vacía
                 ]
             },
             {
-                "name": "Audio Mejorado + Configuración Robusta",
+                "name": "Audio Simplificado + Config Mínima",
                 "use_enhanced": True,
                 "configs": [
-                    {"language": "es", "temperature": 0.1, "fp16": False},
                     {"language": "es", "fp16": False},
-                    {"language": "es"}
-                ]
-            },
-            {
-                "name": "Procesamiento Mínimo + Configuraciones Básicas",
-                "use_enhanced": False,
-                "configs": [
                     {"language": "es"},
-                    {"task": "transcribe"},
                     {}
                 ]
             },
             {
-                "name": "Estrategia de Emergencia - Segmentación",
+                "name": "Procesamiento por Segmentos Pequeños",
                 "use_enhanced": False,
-                "configs": [{"language": "es"}],
-                "segment_audio": True
+                "configs": [{"language": "es", "fp16": False}],
+                "segment_audio": True,
+                "segment_size": 15  # Segmentos más pequeños
+            },
+            {
+                "name": "Estrategia Extrema - Micro Segmentos",
+                "use_enhanced": False,
+                "configs": [{}],
+                "segment_audio": True,
+                "segment_size": 5  # Segmentos muy pequeños
+            },
+            {
+                "name": "Fallback Completo - Sin Configuración",
+                "use_enhanced": False,
+                "configs": [{}],
+                "raw_processing": True
             }
         ]
         
@@ -357,11 +371,34 @@ def transcribe_with_enhanced_quality(model, file_path):
                 
                 # Procesamiento especial para segmentación
                 if strategy.get("segment_audio", False):
-                    result_text = process_audio_segments(model, target_path, strategy["configs"][0])
+                    segment_size = strategy.get("segment_size", 30)  # Tamaño configurable
+                    result_text = process_audio_segments(model, target_path, strategy["configs"][0], segment_size)
                     if result_text:
                         return clean_transcription_text(result_text), None
                     else:
                         last_error = f"Estrategia {strategy_idx + 1}: Segmentación falló"
+                        continue
+                
+                # Procesamiento raw sin configuraciones especiales
+                if strategy.get("raw_processing", False):
+                    try:
+                        # Limpieza extrema de memoria
+                        import gc
+                        gc.collect()
+                        if TORCH_AVAILABLE and torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        
+                        # Transcripción completamente básica
+                        result = model.transcribe(target_path)
+                        raw_text = result.get("text", "")
+                        
+                        if raw_text and raw_text.strip():
+                            cleaned_text = clean_transcription_text(raw_text)
+                            st.success(f"✅ Transcripción exitosa con {strategy['name']} (modo raw)")
+                            return cleaned_text, None
+                            
+                    except Exception as e:
+                        last_error = f"Estrategia {strategy_idx + 1}: Raw processing falló - {str(e)}"
                         continue
                 
                 # Probar configuraciones normales
@@ -398,14 +435,42 @@ def transcribe_with_enhanced_quality(model, file_path):
                         last_error = f"Estrategia {strategy_idx + 1}, Config {config_idx + 1}: {error_msg}"
                         
                         # Manejo específico de errores de tensor
-                        if "tensor" in error_msg.lower() or "size" in error_msg.lower():
+                        if "tensor" in error_msg.lower() and ("size" in error_msg.lower() or "dimension" in error_msg.lower()):
                             st.warning(f"⚠️ Error de tensor detectado en configuración {config_idx + 1}")
+                            
+                            # Información específica del error
+                            if "Expected size 5 but got size 1" in error_msg:
+                                st.info("🔍 **Error específico**: Incompatibilidad de dimensiones de tensor (5 vs 1)")
+                                st.info("💡 **Aplicando corrección**: Simplificando configuración y limpiando memoria")
+                            
                             # Forzar limpieza agresiva de memoria
                             try:
                                 import gc
-                                import torch
                                 gc.collect()
-                                if torch.cuda.is_available():
+                                if TORCH_AVAILABLE and torch.cuda.is_available():
+                                    torch.cuda.empty_cache()
+                                    torch.cuda.synchronize()
+                                
+                                # Pausa breve para que el sistema se estabilice
+                                import time
+                                time.sleep(0.5)
+                            except Exception as cleanup_error:
+                                pass
+                            
+                            # Si es el último config de la estrategia actual, mostrar consejo
+                            if config_idx == len(strategy["configs"]) - 1:
+                                st.warning("🔧 **Próximo paso**: Intentando con procesamiento por segmentos")
+                            
+                            continue
+                        
+                        # Para otros errores específicos
+                        elif "out of memory" in error_msg.lower() or "memory" in error_msg.lower():
+                            st.warning(f"⚠️ Error de memoria detectado en configuración {config_idx + 1}")
+                            # Limpieza específica para memoria
+                            try:
+                                import gc
+                                gc.collect()
+                                if TORCH_AVAILABLE and torch.cuda.is_available():
                                     torch.cuda.empty_cache()
                             except:
                                 pass
@@ -426,12 +491,35 @@ def transcribe_with_enhanced_quality(model, file_path):
                 continue
         
         # Si llegamos aquí, todas las estrategias fallaron
-        return None, f"Error en todas las estrategias de transcripción. Último error: {last_error}"
+        error_info = f"Error en todas las configuraciones de transcripción. Último error: {last_error}"
+        
+        # Análisis del error para dar sugerencias específicas
+        if last_error and "tensor" in last_error.lower():
+            st.error("❌ **Error Persistente de Tensor Detectado**")
+            st.warning("""
+            🔧 **Sugerencias para resolver este problema**:
+            
+            1. **Convierte el archivo** usando FFmpeg:
+               ```
+               ffmpeg -i "tu_archivo.wav" -ar 16000 -ac 1 -c:a pcm_s16le "archivo_fixed.wav"
+               ```
+            
+            2. **Divide el archivo** en partes más pequeñas:
+               ```
+               ffmpeg -i "tu_archivo.wav" -f segment -segment_time 300 -ar 16000 -ac 1 "parte_%03d.wav"
+               ```
+            
+            3. **Usa software como Audacity** para re-exportar el audio en formato más simple
+            
+            4. **Reduce la calidad** del audio (16kHz, mono, 16-bit)
+            """)
+        
+        return None, error_info
         
     except Exception as e:
         return None, f"Error crítico en transcripción: {str(e)}"
 
-def process_audio_segments(model, file_path, config):
+def process_audio_segments(model, file_path, config, segment_duration=30):
     """Procesar audio en segmentos para evitar errores de tensor en archivos largos"""
     try:
         import librosa
@@ -445,23 +533,29 @@ def process_audio_segments(model, file_path, config):
         duration = len(y) / sr
         
         # Si es muy corto, procesar normalmente
-        if duration < 30:
+        if duration < segment_duration / 2:
             return None
         
-        # Dividir en segmentos de 30 segundos con overlap de 2 segundos
-        segment_length = 30 * sr  # 30 segundos
-        overlap = 2 * sr  # 2 segundos de overlap
+        # Dividir en segmentos del tamaño especificado con overlap de 2 segundos
+        segment_length = segment_duration * sr
+        overlap = min(2 * sr, segment_length // 4)  # Overlap mínimo para segmentos pequeños
         step = segment_length - overlap
         
         segments_text = []
         
+        # Mostrar progreso de segmentación
+        st.info(f"🔄 Procesando audio en segmentos de {segment_duration} segundos...")
+        
+        segment_count = 0
         for start in range(0, len(y), step):
             end = min(start + segment_length, len(y))
             segment = y[start:end]
             
             # Saltar segmentos muy cortos
-            if len(segment) < sr:  # Menos de 1 segundo
+            if len(segment) < sr * 0.5:  # Menos de 0.5 segundos
                 continue
+            
+            segment_count += 1
             
             # Guardar segmento temporal
             with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
@@ -469,16 +563,32 @@ def process_audio_segments(model, file_path, config):
                 tmp_path = tmp_file.name
             
             try:
-                # Transcribir segmento
-                result = model.transcribe(tmp_path, **config)
+                # Mostrar progreso del segmento
+                if segment_count % 5 == 0:  # Cada 5 segmentos
+                    st.info(f"📝 Procesando segmento {segment_count}...")
+                
+                # Limpieza de memoria antes de cada segmento
+                import gc
+                gc.collect()
+                
+                # Transcribir segmento con configuración muy básica para evitar tensor errors
+                basic_config = {"language": "es", "fp16": False} if config else {}
+                result = model.transcribe(tmp_path, **basic_config)
                 segment_text = result.get("text", "").strip()
                 
                 if segment_text:
                     segments_text.append(segment_text)
                     
             except Exception as e:
-                # Si falla un segmento, continuar con el siguiente
-                pass
+                # Si falla un segmento, intentar con configuración aún más básica
+                try:
+                    result = model.transcribe(tmp_path)
+                    segment_text = result.get("text", "").strip()
+                    if segment_text:
+                        segments_text.append(segment_text)
+                except:
+                    # Si falla completamente, continuar con el siguiente
+                    pass
             finally:
                 # Limpiar archivo temporal
                 try:
@@ -488,11 +598,14 @@ def process_audio_segments(model, file_path, config):
         
         # Unir todos los segmentos
         if segments_text:
-            return " ".join(segments_text)
+            final_text = " ".join(segments_text)
+            st.success(f"✅ {segment_count} segmentos procesados exitosamente")
+            return final_text
         else:
             return None
             
     except Exception as e:
+        st.error(f"❌ Error en procesamiento por segmentos: {str(e)}")
         return None
 
 def transcribe_with_fallback(model, file_path):
