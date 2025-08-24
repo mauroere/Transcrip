@@ -65,6 +65,20 @@ except ImportError:
         AudioSegment = None
         AUDIO_PROCESSOR = "none"
 
+# Importaciones adicionales para detección de interlocutores
+try:
+    from sklearn.cluster import KMeans
+    from sklearn.preprocessing import StandardScaler
+    SPEAKER_DETECTION_AVAILABLE = True
+except ImportError:
+    SPEAKER_DETECTION_AVAILABLE = False
+
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+
 # Configuración
 UPLOAD_FOLDER = 'uploads'
 TRANSCRIPTIONS_FOLDER = 'transcriptions'
@@ -210,6 +224,369 @@ def enhance_audio_quality(file_path):
             return file_path, None  # Sin mejora si no hay librosa
     except Exception as e:
         return file_path, f"Error mejorando audio: {str(e)}"
+
+def extract_speaker_features(audio_path, segment_duration=2.0):
+    """Extraer características de voz para detección de interlocutores"""
+    try:
+        if not AUDIO_PROCESSOR == "librosa" or not NUMPY_AVAILABLE:
+            return None, "Librerías requeridas no disponibles para detección de speakers"
+        
+        import librosa
+        import numpy as np
+        
+        # Cargar audio
+        y, sr = librosa.load(audio_path, sr=16000, mono=True)
+        
+        # Calcular duración total
+        total_duration = len(y) / sr
+        
+        # Crear segmentos para análisis
+        segment_samples = int(segment_duration * sr)
+        features = []
+        timestamps = []
+        
+        for start in range(0, len(y), segment_samples):
+            end = min(start + segment_samples, len(y))
+            segment = y[start:end]
+            
+            # Saltar segmentos muy cortos o silenciosos
+            if len(segment) < sr * 0.5:  # Menos de 0.5 segundos
+                continue
+            
+            # Calcular energía del segmento
+            energy = np.sum(segment ** 2)
+            if energy < np.percentile(np.sum(np.square(np.split(y, min(100, len(y)//1000))), axis=1), 20):
+                continue  # Saltar segmentos silenciosos
+            
+            # Extraer características de voz
+            segment_features = []
+            
+            # 1. Frecuencia fundamental (pitch)
+            try:
+                pitches, magnitudes = librosa.piptrack(y=segment, sr=sr, threshold=0.1)
+                pitch_values = []
+                for t in range(pitches.shape[1]):
+                    index = magnitudes[:, t].argmax()
+                    pitch = pitches[index, t]
+                    if pitch > 0:
+                        pitch_values.append(pitch)
+                
+                if pitch_values:
+                    avg_pitch = np.mean(pitch_values)
+                    pitch_std = np.std(pitch_values)
+                else:
+                    avg_pitch = 0
+                    pitch_std = 0
+                
+                segment_features.extend([avg_pitch, pitch_std])
+            except:
+                segment_features.extend([0, 0])
+            
+            # 2. Coeficientes MFCC (características espectrales)
+            try:
+                mfccs = librosa.feature.mfcc(y=segment, sr=sr, n_mfcc=13)
+                mfcc_means = np.mean(mfccs, axis=1)
+                mfcc_stds = np.std(mfccs, axis=1)
+                segment_features.extend(mfcc_means.tolist())
+                segment_features.extend(mfcc_stds.tolist())
+            except:
+                segment_features.extend([0] * 26)  # 13 means + 13 stds
+            
+            # 3. Características espectrales adicionales
+            try:
+                # Centroide espectral
+                spectral_centroids = librosa.feature.spectral_centroid(y=segment, sr=sr)
+                spectral_centroid_mean = np.mean(spectral_centroids)
+                
+                # Rolloff espectral
+                spectral_rolloff = librosa.feature.spectral_rolloff(y=segment, sr=sr)
+                spectral_rolloff_mean = np.mean(spectral_rolloff)
+                
+                # Zero crossing rate
+                zcr = librosa.feature.zero_crossing_rate(segment)
+                zcr_mean = np.mean(zcr)
+                
+                segment_features.extend([spectral_centroid_mean, spectral_rolloff_mean, zcr_mean])
+            except:
+                segment_features.extend([0, 0, 0])
+            
+            # 4. Energía y volumen
+            rms_energy = np.sqrt(np.mean(segment ** 2))
+            segment_features.append(rms_energy)
+            
+            features.append(segment_features)
+            timestamps.append(start / sr)  # Timestamp en segundos
+        
+        return np.array(features), timestamps
+        
+    except Exception as e:
+        return None, f"Error extrayendo características: {str(e)}"
+
+def detect_speakers(features, n_speakers=2, min_speakers=2, max_speakers=4):
+    """Detectar interlocutores usando clustering de características de voz"""
+    try:
+        if not SPEAKER_DETECTION_AVAILABLE or features is None:
+            return None, "Detección de speakers no disponible"
+        
+        from sklearn.cluster import KMeans
+        from sklearn.preprocessing import StandardScaler
+        import numpy as np
+        
+        # Normalizar características
+        scaler = StandardScaler()
+        features_scaled = scaler.fit_transform(features)
+        
+        # Determinar número óptimo de speakers
+        best_score = -1
+        best_labels = None
+        best_n_speakers = n_speakers
+        
+        # Probar diferentes números de speakers
+        for n in range(min_speakers, max_speakers + 1):
+            if len(features) < n:
+                continue
+            
+            kmeans = KMeans(n_clusters=n, random_state=42, n_init=10)
+            labels = kmeans.fit_predict(features_scaled)
+            
+            # Calcular score de silhouette como métrica de calidad
+            try:
+                from sklearn.metrics import silhouette_score
+                score = silhouette_score(features_scaled, labels)
+                
+                if score > best_score:
+                    best_score = score
+                    best_labels = labels
+                    best_n_speakers = n
+            except:
+                # Si no está disponible silhouette_score, usar el número por defecto
+                if n == n_speakers:
+                    best_labels = labels
+                    best_n_speakers = n
+                    break
+        
+        return best_labels, best_n_speakers
+        
+    except Exception as e:
+        return None, f"Error en detección de speakers: {str(e)}"
+
+def format_dialogue_transcription(text, speaker_labels, timestamps, speaker_names=None):
+    """Formatear transcripción como diálogo con interlocutores identificados"""
+    try:
+        if speaker_labels is None or not timestamps:
+            return text, "Formato de diálogo no disponible"
+        
+        # Dividir texto en oraciones aproximadas
+        sentences = []
+        current_sentence = ""
+        
+        words = text.split()
+        words_per_segment = max(1, len(words) // len(speaker_labels))
+        
+        # Asignar palabras a segmentos
+        dialogue_segments = []
+        word_idx = 0
+        
+        for i, (speaker, timestamp) in enumerate(zip(speaker_labels, timestamps)):
+            # Calcular palabras para este segmento
+            if i == len(speaker_labels) - 1:  # Último segmento
+                segment_words = words[word_idx:]
+            else:
+                end_word = min(word_idx + words_per_segment, len(words))
+                segment_words = words[word_idx:end_word]
+                word_idx = end_word
+            
+            if segment_words:
+                segment_text = " ".join(segment_words)
+                dialogue_segments.append({
+                    'speaker': speaker,
+                    'text': segment_text,
+                    'timestamp': timestamp
+                })
+        
+        # Agrupar segmentos consecutivos del mismo speaker
+        merged_dialogue = []
+        current_speaker = None
+        current_text = ""
+        current_timestamp = 0
+        
+        for segment in dialogue_segments:
+            if segment['speaker'] != current_speaker:
+                # Cambio de speaker
+                if current_speaker is not None and current_text.strip():
+                    merged_dialogue.append({
+                        'speaker': current_speaker,
+                        'text': current_text.strip(),
+                        'timestamp': current_timestamp
+                    })
+                
+                current_speaker = segment['speaker']
+                current_text = segment['text']
+                current_timestamp = segment['timestamp']
+            else:
+                # Mismo speaker, concatenar texto
+                current_text += " " + segment['text']
+        
+        # Agregar último segmento
+        if current_text.strip():
+            merged_dialogue.append({
+                'speaker': current_speaker,
+                'text': current_text.strip(),
+                'timestamp': current_timestamp
+            })
+        
+        # Formatear como diálogo
+        formatted_dialogue = []
+        
+        # Determinar nombres de speakers
+        if speaker_names is None:
+            unique_speakers = sorted(list(set(speaker_labels)))
+            speaker_names = {}
+            
+            # Asignar nombres basados en patrones típicos de call center
+            for i, speaker_id in enumerate(unique_speakers):
+                if i == 0:
+                    # Primer speaker - probablemente el asesor
+                    speaker_names[speaker_id] = "🎧 ASESOR"
+                elif i == 1:
+                    # Segundo speaker - probablemente el cliente
+                    speaker_names[speaker_id] = "👤 CLIENTE"
+                else:
+                    # Speakers adicionales
+                    speaker_names[speaker_id] = f"👥 INTERLOCUTOR {i}"
+        
+        # Generar diálogo formateado
+        for segment in merged_dialogue:
+            speaker_name = speaker_names.get(segment['speaker'], f"SPEAKER {segment['speaker']}")
+            timestamp_formatted = f"{int(segment['timestamp']//60):02d}:{int(segment['timestamp']%60):02d}"
+            
+            formatted_dialogue.append(f"[{timestamp_formatted}] {speaker_name}: {segment['text']}")
+        
+        dialogue_text = "\n\n".join(formatted_dialogue)
+        
+        # Estadísticas del diálogo
+        stats = {
+            'total_speakers': len(set(speaker_labels)),
+            'total_segments': len(merged_dialogue),
+            'speaker_distribution': {}
+        }
+        
+        for speaker_id in set(speaker_labels):
+            speaker_name = speaker_names.get(speaker_id, f"SPEAKER {speaker_id}")
+            speaker_segments = [s for s in merged_dialogue if s['speaker'] == speaker_id]
+            total_words = sum(len(s['text'].split()) for s in speaker_segments)
+            stats['speaker_distribution'][speaker_name] = {
+                'segments': len(speaker_segments),
+                'words': total_words,
+                'percentage': round((total_words / len(text.split())) * 100, 1)
+            }
+        
+        return dialogue_text, stats
+        
+    except Exception as e:
+        return text, f"Error formateando diálogo: {str(e)}"
+
+def analyze_conversation_dynamics(dialogue_stats):
+    """Analizar dinámicas de conversación entre interlocutores"""
+    try:
+        if not isinstance(dialogue_stats, dict) or 'speaker_distribution' not in dialogue_stats:
+            return {}
+        
+        analysis = {
+            'conversation_type': 'unknown',
+            'dominance_pattern': 'balanced',
+            'interaction_quality': 'normal',
+            'recommendations': []
+        }
+        
+        speaker_dist = dialogue_stats['speaker_distribution']
+        
+        # Identificar tipo de conversación
+        if len(speaker_dist) == 2:
+            speakers = list(speaker_dist.keys())
+            asesor_key = next((k for k in speakers if 'ASESOR' in k), speakers[0])
+            cliente_key = next((k for k in speakers if 'CLIENTE' in k), speakers[1])
+            
+            asesor_percentage = speaker_dist[asesor_key]['percentage']
+            cliente_percentage = speaker_dist[cliente_key]['percentage']
+            
+            # Determinar patrón de dominancia
+            if asesor_percentage > 70:
+                analysis['dominance_pattern'] = 'asesor_dominante'
+                analysis['recommendations'].append("El asesor habla demasiado. Debería dar más espacio al cliente para expresarse.")
+            elif cliente_percentage > 70:
+                analysis['dominance_pattern'] = 'cliente_dominante'
+                analysis['recommendations'].append("El cliente habla mucho. El asesor debería ser más proactivo en guiar la conversación.")
+            elif abs(asesor_percentage - cliente_percentage) < 20:
+                analysis['dominance_pattern'] = 'balanceado'
+            
+            # Determinar tipo de conversación
+            if asesor_percentage > 60:
+                analysis['conversation_type'] = 'asesor_explicativo'
+            elif cliente_percentage > 60:
+                analysis['conversation_type'] = 'cliente_consultivo'
+            else:
+                analysis['conversation_type'] = 'colaborativo'
+            
+            # Analizar calidad de interacción basada en número de segmentos
+            total_segments = dialogue_stats['total_segments']
+            if total_segments < 4:
+                analysis['interaction_quality'] = 'limitada'
+                analysis['recommendations'].append("Conversación muy corta. Considerar si se resolvió adecuadamente la consulta.")
+            elif total_segments > 20:
+                analysis['interaction_quality'] = 'extensa'
+                analysis['recommendations'].append("Conversación muy larga. Evaluar eficiencia en la resolución.")
+            else:
+                analysis['interaction_quality'] = 'adecuada'
+        
+        return analysis
+        
+    except Exception as e:
+        return {'error': f"Error analizando dinámicas: {str(e)}"}
+
+def transcribe_with_speaker_detection(model, file_path):
+    """Transcripción con detección de interlocutores integrada"""
+    try:
+        # Primero hacer la transcripción normal
+        transcription, error = transcribe_with_enhanced_quality(model, file_path)
+        
+        if error or not transcription:
+            return None, error, None, None
+        
+        # Si está disponible, agregar detección de speakers
+        if SPEAKER_DETECTION_AVAILABLE and AUDIO_PROCESSOR == "librosa":
+            
+            st.info("🎭 Analizando interlocutores en el audio...")
+            
+            # Extraer características de voz
+            features, timestamps = extract_speaker_features(file_path)
+            
+            if features is not None:
+                # Detectar speakers
+                speaker_labels, n_speakers = detect_speakers(features)
+                
+                if speaker_labels is not None:
+                    st.success(f"✅ {n_speakers} interlocutores detectados")
+                    
+                    # Formatear como diálogo
+                    dialogue_text, dialogue_stats = format_dialogue_transcription(
+                        transcription, speaker_labels, timestamps
+                    )
+                    
+                    # Analizar dinámicas de conversación
+                    conversation_analysis = analyze_conversation_dynamics(dialogue_stats)
+                    
+                    return transcription, dialogue_text, dialogue_stats, conversation_analysis
+                else:
+                    st.warning("⚠️ No se pudieron detectar interlocutores claramente")
+            else:
+                st.warning("⚠️ No se pudieron extraer características de voz para detección de speakers")
+        
+        # Si no está disponible la detección, devolver solo transcripción normal
+        return transcription, None, None, None
+        
+    except Exception as e:
+        return None, f"Error en transcripción con detección de speakers: {str(e)}", None, None
 
 def clean_transcription_text(text):
     """Limpiar y profesionalizar el texto transcrito"""
@@ -804,7 +1181,7 @@ def format_bytes(bytes_size):
         bytes_size /= 1024.0
     return f"{bytes_size:.1f} TB"
 
-def generate_chatgpt_prompt(transcription, analysis, filename):
+def generate_chatgpt_prompt(transcription, analysis, filename, dialogue_text=None, dialogue_stats=None, conversation_analysis=None):
     """Generar prompt optimizado para ChatGPT"""
     perf = analysis.get('performance', {})
     
@@ -874,9 +1251,47 @@ def generate_chatgpt_prompt(transcription, analysis, filename):
     else:
         prompt += f"\n• Se requiere análisis más detallado"
     
+    # Agregar información de diálogo si está disponible
+    if dialogue_stats and dialogue_text:
+        prompt += f"""
+
+🎭 ANÁLISIS DE DIÁLOGO E INTERLOCUTORES:
+• Número de interlocutores detectados: {dialogue_stats.get('total_speakers', 'No detectado')}
+• Turnos de conversación: {dialogue_stats.get('total_segments', 'No detectado')}"""
+        
+        # Distribución de participación
+        if 'speaker_distribution' in dialogue_stats:
+            prompt += f"\n\n📊 DISTRIBUCIÓN DE PARTICIPACIÓN:"
+            for speaker, stats in dialogue_stats['speaker_distribution'].items():
+                prompt += f"\n• {speaker}: {stats['percentage']}% ({stats['words']} palabras, {stats['segments']} intervenciones)"
+        
+        # Análisis de dinámicas
+        if conversation_analysis:
+            prompt += f"\n\n🗣️ DINÁMICAS DE CONVERSACIÓN:"
+            
+            conv_type = conversation_analysis.get('conversation_type', 'Desconocido')
+            dominance = conversation_analysis.get('dominance_pattern', 'Desconocido')
+            quality = conversation_analysis.get('interaction_quality', 'Desconocido')
+            
+            prompt += f"\n• Tipo de conversación: {conv_type}"
+            prompt += f"\n• Patrón de dominancia: {dominance}"
+            prompt += f"\n• Calidad de interacción: {quality}"
+            
+            recommendations = conversation_analysis.get('recommendations', [])
+            if recommendations:
+                prompt += f"\n\n💡 RECOMENDACIONES DE DINÁMICAS:"
+                for rec in recommendations:
+                    prompt += f"\n• {rec}"
+        
+        prompt += f"""
+
+💬 DIÁLOGO FORMATEADO POR INTERLOCUTORES:
+{dialogue_text}
+"""
+    
     prompt += f"""
 
-📝 TRANSCRIPCIÓN COMPLETA:
+📝 TRANSCRIPCIÓN COMPLETA TRADICIONAL:
 "{transcription}"
 
 🤖 SOLICITUD PARA CHATGPT:
@@ -887,9 +1302,18 @@ Por favor analiza esta llamada de atención al cliente y proporciona:
 3. Evaluación de la satisfacción del cliente
 4. Sugerencias de entrenamiento o coaching
 5. Puntos positivos que el asesor debería mantener
-6. Una calificación general del 1-10 con justificación
+6. Una calificación general del 1-10 con justificación"""
+    
+    # Agregar análisis específico si hay información de diálogo
+    if dialogue_text:
+        prompt += f"""
+7. Análisis de las dinámicas de conversación entre interlocutores
+8. Evaluación del equilibrio en la participación
+9. Recomendaciones sobre el manejo de turnos conversacionales"""
+    
+    prompt += f"""
 
-Contexto: Somos y queremos mejorar la calidad de nuestro servicio al cliente."""
+Contexto: Somos Movistar y queremos mejorar la calidad de nuestro servicio al cliente."""
     
     return prompt
 
@@ -1259,13 +1683,41 @@ def main():
         • Mayor precisión en español
         """)
         
-        st.subheader("🎯 Análisis Incluido")
+        # Información sobre detección de speakers
+        if SPEAKER_DETECTION_AVAILABLE and AUDIO_PROCESSOR == "librosa":
+            st.subheader("🎭 Detección de Interlocutores")
+            st.success("""
+            **🆕 NUEVO: Análisis de Diálogo**
+            • Detección automática de interlocutores
+            • Formato de conversación con timestamps
+            • Análisis de dinámicas conversacionales
+            • Distribución de participación por speaker
+            • Recomendaciones de mejora de interacción
+            """)
+        else:
+            st.subheader("� Detección de Interlocutores")
+            st.warning("""
+            **⚠️ Funcionalidad Limitada**
+            
+            Para habilitar la detección de interlocutores, necesitas instalar:
+            ```
+            pip install scikit-learn
+            ```
+            
+            Esta función permite:
+            • Identificar diferentes voices en el audio
+            • Formatear como diálogo con timestamps
+            • Analizar dinámicas de conversación
+            """)
+        
+        st.subheader("�🎯 Análisis Incluido")
         st.info("""
         • **Performance del Asesor**
         • **Protocolo de Atención**
         • **Calidad del Tono**
         • **Resolución de Problemas**
         • **Palabras Clave**
+        • **Interlocutores y Diálogo** (si está disponible)
         """)
         
         # Créditos del desarrollador
@@ -1436,11 +1888,12 @@ def main():
                         file_status.text(message)
                         time.sleep(0.3)  # Pausa para mostrar progreso
                     
-                    # Uso de función mejorada con fallback robusto
-                    transcription, error = transcribe_with_enhanced_quality(model, tmp_path)
+                    # Uso de función mejorada con detección de speakers
+                    transcription, dialogue_text, dialogue_stats, conversation_analysis = transcribe_with_speaker_detection(model, tmp_path)
                     
-                    if error:
+                    if transcription is None:
                         # Error específico con sugerencias mejoradas
+                        error = dialogue_text  # En caso de error, dialogue_text contiene el mensaje de error
                         st.error(f"❌ Error en transcripción de {uploaded_file.name}")
                         st.markdown(f"**Detalle del error**: {error}")
                         
@@ -1514,6 +1967,9 @@ def main():
                         "file_id": file_id,
                         "filename": uploaded_file.name,
                         "transcription": transcription,
+                        "dialogue_text": dialogue_text,
+                        "dialogue_stats": dialogue_stats,
+                        "conversation_analysis": conversation_analysis,
                         "analysis": analysis,
                         "timestamp": datetime.now().isoformat()
                     }
@@ -1527,6 +1983,9 @@ def main():
                         "filename": uploaded_file.name,
                         "success": True,
                         "transcription": transcription,
+                        "dialogue_text": dialogue_text,
+                        "dialogue_stats": dialogue_stats,
+                        "conversation_analysis": conversation_analysis,
                         "analysis": analysis,
                         "file_id": file_id
                     })
@@ -1594,6 +2053,9 @@ def display_result(result):
     st.subheader(f"🎵 {result['filename']}")
     
     analysis = result.get('analysis', {})
+    dialogue_text = result.get('dialogue_text')
+    dialogue_stats = result.get('dialogue_stats')
+    conversation_analysis = result.get('conversation_analysis')
     
     # Mostrar métricas de performance si existen
     if 'performance' in analysis:
@@ -1608,20 +2070,111 @@ def display_result(result):
     with col3:
         st.metric("🔤 Caracteres", analysis.get('character_count', 0))
     
-    # Transcripción
-    st.subheader("📄 Transcripción")
-    st.text_area(
-        "Contenido:",
-        value=result.get('transcription', ''),
-        height=150,
-        key=f"transcript_{result.get('file_id', 'unknown')}"
-    )
+    # Mostrar información de diálogo si está disponible
+    if dialogue_text and dialogue_stats:
+        st.subheader("🎭 Análisis de Interlocutores")
+        
+        # Métricas de conversación
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("👥 Interlocutores", dialogue_stats.get('total_speakers', 0))
+        with col2:
+            st.metric("💬 Turnos conversación", dialogue_stats.get('total_segments', 0))
+        with col3:
+            # Mostrar tipo de conversación si está disponible
+            conv_type = ""
+            if conversation_analysis:
+                conv_type = conversation_analysis.get('conversation_type', 'Desconocido')
+                if conv_type == 'asesor_explicativo':
+                    conv_type = "🎧 Asesor Explicativo"
+                elif conv_type == 'cliente_consultivo':
+                    conv_type = "👤 Cliente Consultivo"
+                elif conv_type == 'colaborativo':
+                    conv_type = "🤝 Colaborativo"
+            st.metric("🗣️ Tipo conversación", conv_type)
+        
+        # Distribución de participación
+        if 'speaker_distribution' in dialogue_stats:
+            st.subheader("📊 Distribución de Participación")
+            
+            speaker_dist = dialogue_stats['speaker_distribution']
+            
+            # Crear gráfico de barras simple con texto
+            for speaker, stats in speaker_dist.items():
+                percentage = stats['percentage']
+                words = stats['words']
+                
+                # Crear barra visual simple
+                bar_length = int(percentage / 2)  # Escala a 50 caracteres max
+                bar = "█" * bar_length + "░" * (50 - bar_length)
+                
+                st.markdown(f"""
+                **{speaker}**: {percentage}% ({words} palabras)
+                ```
+                {bar} {percentage}%
+                ```
+                """)
+        
+        # Análisis de dinámicas si está disponible
+        if conversation_analysis and 'recommendations' in conversation_analysis:
+            recommendations = conversation_analysis['recommendations']
+            if recommendations:
+                st.subheader("💡 Recomendaciones de Dinámicas")
+                for rec in recommendations:
+                    st.warning(f"⚠️ {rec}")
+        
+        # Mostrar diálogo formateado en pestaña separada
+        st.subheader("💬 Diálogo por Interlocutores")
+        
+        # Pestañas para diálogo y transcripción normal
+        tab1, tab2 = st.tabs(["🎭 Formato Diálogo", "📄 Transcripción Normal"])
+        
+        with tab1:
+            st.text_area(
+                "Conversación con timestamps e interlocutores identificados:",
+                value=dialogue_text,
+                height=200,
+                key=f"dialogue_{result.get('file_id', 'unknown')}"
+            )
+            
+            # Botón para copiar diálogo
+            file_id = result.get('file_id', 'unknown').replace('-', '_')
+            dialogue_copy_button = create_copy_button(
+                text=dialogue_text,
+                button_text="📋 Copiar Diálogo",
+                button_id=f"dialogue_{file_id}",
+                success_message="✅ Diálogo copiado al portapapeles"
+            )
+            st.markdown(dialogue_copy_button, unsafe_allow_html=True)
+        
+        with tab2:
+            st.text_area(
+                "Transcripción tradicional:",
+                value=result.get('transcription', ''),
+                height=200,
+                key=f"transcript_normal_{result.get('file_id', 'unknown')}"
+            )
+            
+            # Botón para copiar transcripción normal
+            transcript_copy_button = create_copy_button(
+                text=result.get('transcription', ''),
+                button_text="📋 Copiar Transcripción",
+                button_id=f"transcript_{file_id}",
+                success_message="✅ Transcripción copiada al portapapeles"
+            )
+            st.markdown(transcript_copy_button, unsafe_allow_html=True)
     
-    # Botones de acción
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        # Botón de copiado sin rerun usando la nueva función
+    else:
+        # Si no hay diálogo, mostrar transcripción normal
+        st.subheader("📄 Transcripción")
+        st.text_area(
+            "Contenido:",
+            value=result.get('transcription', ''),
+            height=150,
+            key=f"transcript_{result.get('file_id', 'unknown')}"
+        )
+        
+        # Botón de copiado para transcripción normal
         transcript_text = result.get('transcription', '')
         file_id = result.get('file_id', 'unknown').replace('-', '_')
         copy_button_html = create_copy_button(
@@ -1632,13 +2185,23 @@ def display_result(result):
         )
         st.markdown(copy_button_html, unsafe_allow_html=True)
     
+    # Botones de acción
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        # Espacio ya usado para copy button arriba
+        pass
+    
     with col2:
         # Usar expander en lugar de session state para evitar reruns
         with st.expander("🤖 ANALIZAR CON IA"):
             prompt = generate_chatgpt_prompt(
                 result.get('transcription', ''),
                 result.get('analysis', {}),
-                result.get('filename', '')
+                result.get('filename', ''),
+                result.get('dialogue_text'),
+                result.get('dialogue_stats'),
+                result.get('conversation_analysis')
             )
             
             # Botón de copiar para el prompt usando la nueva función
@@ -1978,7 +2541,10 @@ def display_successful_result(result):
                 chatgpt_prompt = generate_chatgpt_prompt(
                     result["transcription"], 
                     analysis, 
-                    result["filename"]
+                    result["filename"],
+                    result.get("dialogue_text"),
+                    result.get("dialogue_stats"),
+                    result.get("conversation_analysis")
                 )
                 
                 # Botón de copiar específico para el prompt

@@ -7,5 +7,9 @@ pandas
 openpyxl
 psutil
 
+# Machine Learning for speaker detection
+scikit-learn>=1.0.0
+numpy>=1.21.0
+
 # Optional: Audio conversion fallback
 moviepy>=1.0.3
