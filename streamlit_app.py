@@ -977,8 +977,11 @@ def generate_csv_report(result, analysis):
 
 def create_copy_button(text, button_text, button_id, success_message="✅ Copiado al portapapeles"):
     """Crear un botón de copiado que no cause rerun de Streamlit"""
-    # Escapar el texto para JavaScript
+    # Escapar el texto para JavaScript más seguro
     text_safe = text.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r').replace('"', '\\"').replace("'", "\\'")
+    
+    # Escapar también el mensaje de éxito
+    success_safe = success_message.replace('"', '\\"').replace("'", "\\'")
     
     button_html = f"""
     <div style="margin-bottom: 10px;">
@@ -1033,25 +1036,11 @@ def create_copy_button(text, button_text, button_id, success_message="✅ Copiad
     }}
     
     function showSuccessMessage_{button_id}() {{
-        // Crear notificación temporal
         const notification = document.createElement('div');
-        notification.innerHTML = '{success_message}';
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #4CAF50;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            z-index: 9999;
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        `;
+        notification.innerHTML = "{success_safe}";
+        notification.style.cssText = "position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 12px 24px; border-radius: 8px; z-index: 9999; font-family: Arial, sans-serif; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);";
         document.body.appendChild(notification);
         
-        // Remover notificación después de 3 segundos
         setTimeout(function() {{
             if (notification.parentNode) {{
                 notification.parentNode.removeChild(notification);
