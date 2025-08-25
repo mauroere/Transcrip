@@ -1,5 +1,5 @@
 [general]
-# Configuración optimizada para Streamlit Cloud
+# Configuración optimizada para Streamlit Cloud y Python 3.9
 dataFrameSerialization = "legacy"
 
 [server]

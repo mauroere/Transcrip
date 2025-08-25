@@ -14,6 +14,21 @@ import pandas as pd
 from io import BytesIO
 import re
 
+# Verificar compatibilidad de Python
+python_version = sys.version_info
+if python_version >= (3, 10):
+    st.error(f"""
+    ⚠️ **Incompatibilidad de Python detectada**
+    
+    Esta aplicación requiere Python 3.9 o inferior debido a limitaciones de OpenAI Whisper.
+    Versión actual: Python {python_version.major}.{python_version.minor}.{python_version.micro}
+    
+    Para solucionar esto en Streamlit Cloud:
+    1. Asegúrate de que existe el archivo `runtime.txt` con `python-3.9.18`
+    2. Redeploy la aplicación
+    """)
+    st.stop()
+
 # Importación condicional de psutil (para monitoreo del sistema)
 try:
     import psutil  # type: ignore
