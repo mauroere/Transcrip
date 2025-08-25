@@ -1,6 +1,6 @@
 # Minimal requirements for Streamlit Cloud deployment (Python 3.9 compatible)
 streamlit>=1.28.0
-openai-whisper==20231117
+openai-whisper
 librosa>=0.9.1,<0.11
 soundfile>=0.12.1
 pandas>=1.5.0

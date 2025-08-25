@@ -18,14 +18,23 @@ import re
 python_version = sys.version_info
 if python_version >= (3, 10):
     st.error(f"""
-    ⚠️ **Incompatibilidad de Python detectada**
+    ⚠️ **INCOMPATIBILIDAD CRÍTICA DE PYTHON DETECTADA**
     
-    Esta aplicación requiere Python 3.9 o inferior debido a limitaciones de OpenAI Whisper.
-    Versión actual: Python {python_version.major}.{python_version.minor}.{python_version.micro}
+    🚨 **Streamlit Cloud está usando Python {python_version.major}.{python_version.minor}.{python_version.micro}**
     
-    Para solucionar esto en Streamlit Cloud:
-    1. Asegúrate de que existe el archivo `runtime.txt` con `python-3.9.18`
-    2. Redeploy la aplicación
+    Esta aplicación requiere **Python 3.9** debido a limitaciones específicas:
+    - OpenAI Whisper requiere `triton>=2.0.0,<3`
+    - Triton no tiene wheels compatibles con Python 3.13
+    - llvmlite requiere `>=3.6,<3.10` (incompatible con Python 3.13)
+    
+    🔧 **Soluciones implementadas**:
+    ✅ Archivo `runtime.txt` creado con `python-3.9.19`
+    ✅ Requirements.txt optimizado para Python 3.9
+    ✅ Configuración de Streamlit Cloud ajustada
+    
+    ❌ **El problema persiste** - Streamlit Cloud no está respetando runtime.txt
+    
+    📞 **Contacta al administrador del repositorio para forzar Python 3.9**
     """)
     st.stop()
 
