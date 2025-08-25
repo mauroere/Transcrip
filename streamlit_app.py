@@ -18,24 +18,83 @@ import re
 python_version = sys.version_info
 if python_version >= (3, 10):
     st.error(f"""
-    ⚠️ **INCOMPATIBILIDAD CRÍTICA DE PYTHON DETECTADA**
+    🚨 **PROBLEMA CRÍTICO CONFIRMADO EN STREAMLIT CLOUD**
     
-    🚨 **Streamlit Cloud está usando Python {python_version.major}.{python_version.minor}.{python_version.micro}**
+    **Streamlit Cloud está usando Python {python_version.major}.{python_version.minor}.{python_version.micro}** 
     
-    Esta aplicación requiere **Python 3.9** debido a limitaciones específicas:
-    - OpenAI Whisper requiere `triton>=2.0.0,<3`
-    - Triton no tiene wheels compatibles con Python 3.13
-    - llvmlite requiere `>=3.6,<3.10` (incompatible con Python 3.13)
+    ❌ **OpenAI Whisper es INCOMPATIBLE** con Python 3.13
     
-    🔧 **Soluciones implementadas**:
-    ✅ Archivo `runtime.txt` creado con `python-3.9.19`
-    ✅ Requirements.txt optimizado para Python 3.9
-    ✅ Configuración de Streamlit Cloud ajustada
+    🔧 **SOLUCIÓN INMEDIATA REQUERIDA**:
     
-    ❌ **El problema persiste** - Streamlit Cloud no está respetando runtime.txt
+    1. **Elimina esta app** en [share.streamlit.io](https://share.streamlit.io)
+    2. **Crea una nueva app** desde el mismo repositorio
+    3. **Verifica** que use Python 3.9 con runtime.txt
     
-    📞 **Contacta al administrador del repositorio para forzar Python 3.9**
+    📋 **Archivos de configuración ya listos**:
+    ✅ runtime.txt → python-3.9.19
+    ✅ requirements.txt → versiones compatibles
+    ✅ .python-version → 3.9.19
+    
+    ⚠️ **Streamlit Cloud está IGNORANDO el archivo runtime.txt**
+    
+    🆘 **Contacta al administrador para recrear la app**
     """)
+    
+    # Mostrar versión backup limitada
+    st.warning("🔄 **Cargando versión de respaldo limitada...**")
+    st.info("⏳ Esta versión permite análisis básico de texto mientras se soluciona el problema de Python")
+    
+    # Aquí continúa con funcionalidad limitada pero útil
+    st.title("🎙️ Sistema de Transcripción Movistar (Modo Backup)")
+    st.markdown("### Análisis Básico de Texto - Versión de Respaldo")
+    
+    # Funcionalidad básica para análisis manual
+    manual_text = st.text_area(
+        "📝 Ingresa el texto transcrito manualmente para análisis:",
+        height=200,
+        placeholder="Ejemplo: Hola, buenos días, habla con María de Movistar, en qué puedo ayudarle..."
+    )
+    
+    if manual_text and st.button("🔍 Analizar Texto"):
+        # Análisis básico funcional
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("📊 Palabras", len(manual_text.split()))
+        with col2:
+            st.metric("📊 Caracteres", len(manual_text))
+        with col3:
+            st.metric("⏱️ Duración est.", f"{len(manual_text.split()) / 150:.1f} min")
+        
+        # Análisis de palabras clave específicas de Movistar
+        keywords_analysis = {
+            "🏢 Movistar": manual_text.lower().count('movistar'),
+            "🙏 Saludos": sum([manual_text.lower().count(x) for x in ['hola', 'buenos días', 'buenas tardes']]),
+            "🙏 Agradecimientos": sum([manual_text.lower().count(x) for x in ['gracias', 'muchas gracias']]),
+            "⚠️ Problemas": sum([manual_text.lower().count(x) for x in ['problema', 'error', 'falla']]),
+            "📞 Servicio": sum([manual_text.lower().count(x) for x in ['servicio', 'plan', 'factura', 'línea']])
+        }
+        
+        st.subheader("🔍 Análisis de Palabras Clave")
+        cols = st.columns(len(keywords_analysis))
+        for i, (key, value) in enumerate(keywords_analysis.items()):
+            with cols[i]:
+                st.metric(key, value)
+        
+        # Análisis básico de protocolo
+        st.subheader("📋 Análisis de Protocolo Básico")
+        protocol_checks = {
+            "Saludo inicial": any(x in manual_text.lower() for x in ['hola', 'buenos días', 'buenas tardes']),
+            "Identificación empresa": 'movistar' in manual_text.lower(),
+            "Pregunta de ayuda": any(x in manual_text.lower() for x in ['puedo ayudar', 'en qué', 'necesita']),
+            "Agradecimientos": any(x in manual_text.lower() for x in ['gracias', 'agradezco'])
+        }
+        
+        for check, passed in protocol_checks.items():
+            st.write(f"{'✅' if passed else '❌'} {check}")
+        
+        st.subheader("📄 Texto Analizado")
+        st.text_area("", value=manual_text, height=150, disabled=True)
+    
     st.stop()
 
 # Importación condicional de psutil (para monitoreo del sistema)
