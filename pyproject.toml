@@ -1,0 +1,10 @@
+[tool.streamlit]
+python_version = "3.9.19"
+
+[project]
+name = "transcribirapp"
+requires-python = ">=3.9,<3.10"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

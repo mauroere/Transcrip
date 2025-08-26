@@ -1,18 +1,19 @@
-# Minimal requirements for Streamlit Cloud deployment (Python 3.9 compatible)
-streamlit>=1.28.0
-openai-whisper
+# CRITICAL: Requirements for Python 3.9 ONLY - Streamlit Cloud compatibility
+streamlit>=1.28.0,<2.0.0
+openai-whisper==20231117
 librosa>=0.9.1,<0.11
-soundfile>=0.12.1
-pandas>=1.5.0
-openpyxl>=3.0.9
-psutil>=5.8.0
+soundfile>=0.12.1,<0.13.0
+pandas>=1.5.0,<2.0.0
+openpyxl>=3.0.9,<4.0.0
+psutil>=5.8.0,<6.0.0
 
-# Machine Learning for speaker detection (compatible versions)
+# Machine Learning - Python 3.9 compatible versions ONLY
 scikit-learn>=1.0.0,<1.4.0
 numpy>=1.21.0,<1.25.0
 
-# Audio processing with compatible versions
+# Audio processing - PINNED for Python 3.9
 numba>=0.56.0,<0.58.0
+llvmlite>=0.39.0,<0.41.0
 llvmlite>=0.39.0,<0.41.0
 
 # Optional: Audio conversion fallback
