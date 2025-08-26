@@ -1,0 +1,20 @@
+# REQUIREMENTS BACKUP - COMPATIBLE CON PYTHON 3.13
+# Archivo de dependencias alternativo que SÍ FUNCIONA con Python 3.13
+
+streamlit>=1.28.0
+pandas>=1.5.0
+openpyxl>=3.0.9
+psutil>=5.8.0
+
+# Audio processing alternativo - SIN WHISPER ni problemas de compilación
+pydub>=0.25.1
+scipy>=1.10.0
+numpy>=1.24.0
+
+# Para análisis básico de texto sin machine learning pesado
+textblob>=0.17.1
+python-docx>=0.8.11
+
+# Utilidades adicionales
+requests>=2.28.0
+Pillow>=9.0.0
