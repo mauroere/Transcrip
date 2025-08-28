@@ -78,16 +78,61 @@ def allowed_file(filename):
     """Verificar si el archivo tiene una extensión permitida"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@st.cache_resource
-def load_whisper_model():
-    """Cargar modelo Whisper con cache"""
+def load_whisper_model_no_cache():
+    """Cargar modelo Whisper sin cache para debugging"""
     if not WHISPER_AVAILABLE:
         return None
+    
     try:
-        return whisper.load_model("base")
-    except Exception as e:
-        st.error(f"Error cargando Whisper: {e}")
+        import whisper
+        # Intentar modelos de menor a mayor
+        models_to_try = ["tiny", "base", "small"]
+        
+        for model_name in models_to_try:
+            try:
+                st.info(f"Intentando cargar modelo '{model_name}'...")
+                model = whisper.load_model(model_name)
+                st.success(f"✅ Modelo '{model_name}' cargado exitosamente")
+                return model
+            except Exception as e:
+                st.warning(f"⚠️ Modelo '{model_name}' falló: {str(e)}")
+                continue
+        
         return None
+    except Exception as e:
+        st.error(f"Error crítico: {str(e)}")
+        return None
+
+@st.cache_resource
+def load_whisper_model():
+    """Cargar modelo Whisper con cache y manejo robusto de errores"""
+    if not WHISPER_AVAILABLE:
+        return None
+    
+    try:
+        with st.spinner("🔄 Cargando modelo Whisper (puede tomar unos momentos la primera vez)..."):
+            # Usar modelo tiny para pruebas rápidas, base para producción
+            model = whisper.load_model("tiny")  # Cambiar a "base" para mejor calidad
+            return model
+    except Exception as e:
+        st.error(f"Error específico cargando Whisper: {str(e)}")
+        
+        # Intentar con modelo más pequeño
+        try:
+            st.info("Intentando con modelo más ligero...")
+            model = whisper.load_model("tiny")
+            st.success("✅ Modelo ligero cargado exitosamente")
+            return model
+        except Exception as e2:
+            st.error(f"Error crítico: {str(e2)}")
+            
+            # Diagnóstico adicional
+            st.warning("🔍 **Diagnóstico del problema:**")
+            st.markdown("• Problema de conectividad para descargar modelo")
+            st.markdown("• Espacio insuficiente en disco")
+            st.markdown("• Permisos de escritura en el directorio")
+            
+            return None
 
 def convert_audio_to_wav(file_path):
     """Convertir audio a WAV si es necesario"""
@@ -269,6 +314,57 @@ with tab1:
     if not ffmpeg_status:
         st.info("💡 **Estado del sistema:** FFmpeg no detectado. Archivos WAV funcionarán perfectamente.")
     
+    # Botón de diagnóstico
+    if st.button("🔍 Ejecutar Diagnóstico del Sistema"):
+        with st.expander("📋 Resultados del Diagnóstico", expanded=True):
+            # Verificar Whisper
+            if WHISPER_AVAILABLE:
+                st.success("✅ Whisper disponible")
+                try:
+                    import whisper
+                    st.write(f"   Versión: {whisper.__version__}")
+                    
+                    # Intentar cargar modelo
+                    try:
+                        with st.spinner("Probando carga de modelo..."):
+                            test_model = whisper.load_model("tiny")
+                        st.success("✅ Modelo Whisper carga correctamente")
+                    except Exception as e:
+                        st.error(f"❌ Error cargando modelo: {e}")
+                except Exception as e:
+                    st.error(f"❌ Error con Whisper: {e}")
+            else:
+                st.error("❌ Whisper no disponible")
+            
+            # Verificar FFmpeg
+            if ffmpeg_status:
+                st.success("✅ FFmpeg disponible")
+            else:
+                st.warning("⚠️ FFmpeg no disponible")
+            
+            # Verificar Pydub
+            if PYDUB_AVAILABLE:
+                st.success("✅ Pydub disponible")
+            else:
+                st.warning("⚠️ Pydub no disponible")
+            
+            # Información del sistema
+            import sys
+            st.info(f"🐍 Python: {sys.version}")
+            
+            # Verificar espacio en disco
+            import shutil
+            free_space = shutil.disk_usage('.').free / (1024**3)
+            st.info(f"💾 Espacio libre: {free_space:.1f} GB")
+            
+            if free_space < 1:
+                st.warning("⚠️ Poco espacio en disco - puede afectar descarga de modelos")
+            
+            # Botón para limpiar cache
+            if st.button("🧹 Limpiar Cache de Streamlit"):
+                st.cache_resource.clear()
+                st.success("✅ Cache limpiada - recarga la página")
+    
     uploaded_file = st.file_uploader(
         "Selecciona un archivo de audio:",
         type=['wav', 'mp3', 'mp4', 'avi', 'mov', 'flac', 'm4a', 'ogg', 'webm'],
@@ -316,6 +412,11 @@ with tab1:
                 with st.spinner("🔄 Procesando audio... Esto puede tomar unos minutos"):
                     # Cargar modelo
                     model = load_whisper_model()
+                    
+                    # Si falla con cache, intentar sin cache
+                    if not model:
+                        st.info("🔄 Intentando carga alternativa sin cache...")
+                        model = load_whisper_model_no_cache()
                     
                     if model:
                         # Intentar transcripción directa
