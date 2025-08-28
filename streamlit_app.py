@@ -18,18 +18,14 @@ import re
 try:
     import whisper
     WHISPER_AVAILABLE = True
-    print(f"✅ Whisper cargado correctamente - Versión: {whisper.__version__}")
 except ImportError as e:
     WHISPER_AVAILABLE = False
-    print(f"❌ Whisper no disponible: {e}")
 
 try:
     from pydub import AudioSegment
     PYDUB_AVAILABLE = True
-    print("✅ Pydub cargado correctamente")
 except ImportError as e:
     PYDUB_AVAILABLE = False
-    print(f"❌ Pydub no disponible: {e}")
 
 # Configuración de la página
 st.set_page_config(
@@ -91,10 +87,14 @@ def transcribe_audio(model, file_path):
         return None, "Modelo Whisper no disponible"
     
     try:
-        result = model.transcribe(file_path, language="es")
+        # Whisper puede manejar muchos formatos sin conversión
+        result = model.transcribe(file_path, language="es", fp16=False)
         return result, None
     except Exception as e:
-        return None, str(e)
+        error_msg = str(e)
+        if "ffmpeg" in error_msg.lower():
+            return None, "FFmpeg no está instalado. Instala FFmpeg o usa archivos WAV directamente."
+        return None, f"Error en transcripción: {error_msg}"
 
 def format_dialogue(segments):
     """Formatear segmentos como diálogo"""
@@ -211,11 +211,6 @@ Contexto: Análisis de calidad de servicio al cliente para mejorar la atención.
 st.title("🎙️ Sistema de Análisis de Performance")
 st.markdown("### 📊 Análisis Profesional de Atención al Cliente")
 
-# Debug info (temporal)
-st.write(f"🔧 Debug: Whisper disponible = {WHISPER_AVAILABLE}")
-if WHISPER_AVAILABLE:
-    st.write(f"🔧 Debug: Whisper versión = {whisper.__version__}")
-
 # Tabs principales
 tab1, tab2, tab3 = st.tabs(["📁 Subir Audio", "📝 Análisis Manual", "📊 Resultados"])
 
@@ -269,11 +264,35 @@ with tab1:
                     else:
                         st.error("❌ No se pudo cargar el modelo Whisper")
         else:
-            st.info("💡 **Transcripción automática no disponible**")
-            st.markdown("Para habilitar la transcripción automática:")
-            st.markdown("1. Instala las dependencias: `pip install openai-whisper`")
-            st.markdown("2. Reinicia la aplicación")
-            st.markdown("3. Mientras tanto, puedes usar el **análisis manual** en la siguiente pestaña")
+            st.info("💡 **Transcripción automática disponible**")
+            st.markdown("**Notas importantes:**")
+            st.markdown("• Whisper puede procesar la mayoría de formatos de audio directamente")
+            st.markdown("• Para mejor compatibilidad, usa archivos WAV")
+            st.markdown("• Si hay errores, instala FFmpeg: `winget install ffmpeg`")
+            st.markdown("• **Formatos soportados:** MP3, WAV, MP4, M4A, FLAC, OGG")
+            
+            if st.button("🎙️ Transcribir Audio Directamente", type="primary"):
+                with st.spinner("🔄 Procesando audio... Esto puede tomar unos minutos"):
+                    # Cargar modelo
+                    model = load_whisper_model()
+                    
+                    if model:
+                        # Intentar transcripción directa (Whisper maneja muchos formatos)
+                        result, error = transcribe_audio(model, temp_path)
+                        
+                        if result and not error:
+                            st.session_state['transcription_result'] = result
+                            st.session_state['audio_file'] = uploaded_file.name
+                            st.success("✅ Transcripción completada")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {error}")
+                            st.info("💡 **Soluciones:**")
+                            st.markdown("1. Instala FFmpeg: `winget install ffmpeg`")
+                            st.markdown("2. Convierte tu audio a WAV usando un convertidor online")
+                            st.markdown("3. Usa el análisis manual con texto transcrito")
+                    else:
+                        st.error("❌ No se pudo cargar el modelo Whisper")
 
 with tab2:
     st.header("📝 Análisis Manual de Texto")
