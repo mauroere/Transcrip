@@ -1,5 +1,5 @@
 @echo off
-echo Instalando dependencias para el Transcriptor de Audios Movistar...
+echo Instalando dependencias para el Transcriptor de Audios...
 echo.
 
 python --version

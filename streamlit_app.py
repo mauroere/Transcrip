@@ -29,7 +29,7 @@ except ImportError:
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Sistema de Análisis de Performance - Movistar",
+    page_title="Sistema de Análisis de Performance",
     page_icon="🎙️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -99,7 +99,7 @@ def format_dialogue(segments):
         if start - last_end > 2.0:  # Pausa de más de 2 segundos
             current_speaker = 2 if current_speaker == 1 else 1
         
-        speaker_name = "ASESOR MOVISTAR" if current_speaker == 1 else "CLIENTE"
+        speaker_name = "ASESOR" if current_speaker == 1 else "CLIENTE"
         timestamp = f"{int(start//60):02d}:{int(start%60):02d}"
         
         dialogue.append({
@@ -161,7 +161,7 @@ def generate_ai_prompt(dialogue, analysis, transcription):
         for item in dialogue
     ])
     
-    prompt = f"""🎯 ANÁLISIS DE LLAMADA DE ATENCIÓN AL CLIENTE - MOVISTAR
+    prompt = f"""🎯 ANÁLISIS DE LLAMADA DE ATENCIÓN AL CLIENTE
 
 📊 SCORES AUTOMÁTICOS:
 • Protocolo: {analysis['protocol_score']:.1f}%
@@ -181,7 +181,7 @@ def generate_ai_prompt(dialogue, analysis, transcription):
 "{transcription}"
 
 🤖 SOLICITUD PARA IA:
-Por favor analiza esta llamada de atención al cliente de Movistar y proporciona:
+Por favor analiza esta llamada de atención al cliente y proporciona:
 
 1. Análisis detallado del desempeño del asesor
 2. Recomendaciones específicas para mejorar la atención
@@ -192,12 +192,12 @@ Por favor analiza esta llamada de atención al cliente de Movistar y proporciona
 7. Análisis de las dinámicas de conversación
 8. Evaluación del equilibrio en la participación
 
-Contexto: Somos Movistar y queremos mejorar la calidad de nuestro servicio al cliente.
+Contexto: Análisis de calidad de servicio al cliente para mejorar la atención.
 """
     return prompt
 
 # APLICACIÓN PRINCIPAL
-st.title("🎙️ Sistema de Análisis de Performance - Movistar")
+st.title("🎙️ Sistema de Análisis de Performance")
 st.markdown("### 📊 Análisis Profesional de Atención al Cliente")
 
 # Tabs principales
@@ -261,7 +261,7 @@ with tab2:
     manual_text = st.text_area(
         "Ingresa el texto transcrito manualmente:",
         height=300,
-        placeholder="Ejemplo: Hola, buenos días, habla con María de Movistar, en qué puedo ayudarle..."
+        placeholder="Ejemplo: Hola, buenos días, habla con María del departamento de atención al cliente, en qué puedo ayudarle..."
     )
     
     if manual_text and st.button("🔍 Analizar Texto Manual"):
@@ -365,4 +365,4 @@ with tab3:
 
 # Footer
 st.markdown("---")
-st.markdown("*Sistema de Análisis de Performance para Call Center Movistar | Optimizado para Python 3.13*")
+st.markdown("*Sistema de Análisis de Performance para Call Center | Optimizado para Python 3.13*")

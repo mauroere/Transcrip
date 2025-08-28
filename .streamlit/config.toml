@@ -12,7 +12,7 @@ maxMessageSize = 200
 enableWebsocketCompression = false
 
 [theme]
-# Tema corporativo Movistar
+# Tema corporativo genérico
 primaryColor = "#E10A68"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F8F9FA"

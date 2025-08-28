@@ -51,7 +51,7 @@ Una aplicación web para transcribir y analizar audios de llamadas de asesores c
 - **Saludos**: "buenos días", "buenas tardes", "hola"
 - **Agradecimientos**: "gracias", "agradezco"
 - **Disculpas**: "disculpe", "perdón", "lo siento"
-- **Servicios Movistar**: "movistar", "plan", "servicio", "línea", "internet", "televisión"
+- **Servicios**: "servicio", "plan", "línea", "internet", "televisión"
 - **Problemas Técnicos**: "problema", "falla", "error", "no funciona", "lento"
 
 ### Sentimientos

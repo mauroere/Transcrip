@@ -1,5 +1,5 @@
 @echo off
-echo Iniciando Transcriptor de Audios Movistar...
+echo Iniciando Transcriptor de Audios...
 echo.
 
 python app.py

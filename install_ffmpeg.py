@@ -103,7 +103,7 @@ def manual_instructions():
 
 def main():
     """Función principal"""
-    print("🔧 CONFIGURADOR DE FFMPEG PARA TRANSCRIPTOR MOVISTAR")
+    print("🔧 CONFIGURADOR DE FFMPEG PARA TRANSCRIPTOR")
     print("="*55)
     
     if check_ffmpeg():
