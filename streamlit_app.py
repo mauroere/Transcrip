@@ -200,33 +200,6 @@ Contexto: Somos Movistar y queremos mejorar la calidad de nuestro servicio al cl
 st.title("🎙️ Sistema de Análisis de Performance - Movistar")
 st.markdown("### 📊 Análisis Profesional de Atención al Cliente")
 
-# Sidebar con información del sistema
-with st.sidebar:
-    st.header("ℹ️ Estado del Sistema")
-    
-    if python_version >= (3, 10):
-        st.success(f"✅ Python {python_version.major}.{python_version.minor}.{python_version.micro}")
-    
-    st.info(f"✅ Streamlit funcionando")
-    
-    if WHISPER_AVAILABLE:
-        st.success("✅ Whisper disponible")
-    else:
-        st.warning("⚠️ Whisper no disponible")
-    
-    if PYDUB_AVAILABLE:
-        st.success("✅ Pydub disponible")
-    else:
-        st.warning("⚠️ Pydub no disponible")
-    
-    st.markdown("---")
-    st.markdown("**Funcionalidades:**")
-    st.markdown("• 📁 Subir archivos de audio")
-    st.markdown("• 🎙️ Transcripción automática")
-    st.markdown("• 💬 Diálogos por interlocutores")
-    st.markdown("• 📊 Análisis de performance")
-    st.markdown("• 🤖 Prompt para IA")
-
 # Tabs principales
 tab1, tab2, tab3 = st.tabs(["📁 Subir Audio", "📝 Análisis Manual", "📊 Resultados"])
 
