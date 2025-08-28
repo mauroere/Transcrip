@@ -18,14 +18,18 @@ import re
 try:
     import whisper
     WHISPER_AVAILABLE = True
-except ImportError:
+    print(f"✅ Whisper cargado correctamente - Versión: {whisper.__version__}")
+except ImportError as e:
     WHISPER_AVAILABLE = False
+    print(f"❌ Whisper no disponible: {e}")
 
 try:
     from pydub import AudioSegment
     PYDUB_AVAILABLE = True
-except ImportError:
+    print("✅ Pydub cargado correctamente")
+except ImportError as e:
     PYDUB_AVAILABLE = False
+    print(f"❌ Pydub no disponible: {e}")
 
 # Configuración de la página
 st.set_page_config(
@@ -200,6 +204,11 @@ Contexto: Análisis de calidad de servicio al cliente para mejorar la atención.
 st.title("🎙️ Sistema de Análisis de Performance")
 st.markdown("### 📊 Análisis Profesional de Atención al Cliente")
 
+# Debug info (temporal)
+st.write(f"🔧 Debug: Whisper disponible = {WHISPER_AVAILABLE}")
+if WHISPER_AVAILABLE:
+    st.write(f"🔧 Debug: Whisper versión = {whisper.__version__}")
+
 # Tabs principales
 tab1, tab2, tab3 = st.tabs(["📁 Subir Audio", "📝 Análisis Manual", "📊 Resultados"])
 
@@ -230,8 +239,8 @@ with tab1:
         st.success("✅ Archivo subido correctamente")
         
         # Procesar transcripción
-        if st.button("🎙️ Iniciar Transcripción Profesional", type="primary"):
-            if WHISPER_AVAILABLE:
+        if WHISPER_AVAILABLE:
+            if st.button("🎙️ Iniciar Transcripción Profesional", type="primary"):
                 with st.spinner("🔄 Procesando audio... Esto puede tomar unos minutos"):
                     # Cargar modelo
                     model = load_whisper_model()
@@ -252,8 +261,12 @@ with tab1:
                             st.error(f"❌ Error en transcripción: {error}")
                     else:
                         st.error("❌ No se pudo cargar el modelo Whisper")
-            else:
-                st.error("❌ Whisper no está disponible. Usa el análisis manual en la pestaña correspondiente.")
+        else:
+            st.info("💡 **Transcripción automática no disponible**")
+            st.markdown("Para habilitar la transcripción automática:")
+            st.markdown("1. Instala las dependencias: `pip install openai-whisper`")
+            st.markdown("2. Reinicia la aplicación")
+            st.markdown("3. Mientras tanto, puedes usar el **análisis manual** en la siguiente pestaña")
 
 with tab2:
     st.header("📝 Análisis Manual de Texto")
