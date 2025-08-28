@@ -1,16 +1,16 @@
-# Requirements optimizados para Streamlit Cloud
-# Compatible con Python 3.11+ y Debian/Ubuntu
+# Requirements para Streamlit Cloud
+# Optimizado para Python 3.11 en Debian/Ubuntu
 
 streamlit>=1.28.0
 pandas>=1.5.0
 openpyxl>=3.0.9
 psutil>=5.8.0
 
-# Audio processing con Whisper
+# Audio processing
 pydub>=0.25.1
 scipy>=1.10.0
 numpy>=1.24.0
-openai-whisper
+openai-whisper>=20231117
 
 # Análisis de texto
 textblob>=0.17.1
@@ -22,3 +22,6 @@ Pillow>=9.0.0
 
 # Video/Audio conversion
 moviepy>=1.0.3,<2.0.0
+
+# Codecs de audio necesarios para pydub
+simpleaudio
