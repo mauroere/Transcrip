@@ -66,16 +66,23 @@ def load_whisper_model():
 
 def convert_audio_to_wav(file_path):
     """Convertir audio a WAV si es necesario"""
+    # Verificar si ya es WAV
+    if file_path.lower().endswith('.wav'):
+        return file_path
+    
     if not PYDUB_AVAILABLE:
+        st.warning("⚠️ Conversión de audio no disponible. Sube un archivo WAV directamente.")
         return file_path
     
     try:
+        # Intentar conversión con pydub
         audio = AudioSegment.from_file(file_path)
         wav_path = file_path.replace(os.path.splitext(file_path)[1], '.wav')
         audio.export(wav_path, format="wav")
         return wav_path
     except Exception as e:
-        st.warning(f"No se pudo convertir el audio: {e}")
+        st.info(f"💡 No se pudo convertir el audio automáticamente. Usa archivos WAV para mejores resultados.")
+        # Intentar usar el archivo original directamente con Whisper
         return file_path
 
 def transcribe_audio(model, file_path):
