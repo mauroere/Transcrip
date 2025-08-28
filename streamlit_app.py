@@ -38,6 +38,35 @@ st.set_page_config(
 # Verificar compatibilidad de Python
 python_version = sys.version_info
 
+def check_ffmpeg_available():
+    """Verificar si FFmpeg está disponible silenciosamente"""
+    try:
+        import subprocess
+        result = subprocess.run(['ffmpeg', '-version'], 
+                              capture_output=True, 
+                              text=True, 
+                              timeout=5)
+        return result.returncode == 0
+    except:
+        return False
+
+def check_audio_format(filename):
+    """Verificar formato de audio y dar recomendaciones"""
+    ext = filename.lower().split('.')[-1]
+    
+    format_info = {
+        'wav': {'compatible': True, 'note': 'Formato óptimo - Compatible al 100%'},
+        'mp3': {'compatible': True, 'note': 'Buena compatibilidad - Requiere FFmpeg para conversión'},
+        'mp4': {'compatible': True, 'note': 'Buena compatibilidad - Requiere FFmpeg'},
+        'm4a': {'compatible': True, 'note': 'Buena compatibilidad - Requiere FFmpeg'},
+        'flac': {'compatible': True, 'note': 'Alta calidad - Requiere FFmpeg'},
+        'ogg': {'compatible': True, 'note': 'Buena compatibilidad - Requiere FFmpeg'},
+        'webm': {'compatible': False, 'note': 'Formato complejo - Convertir a WAV recomendado'},
+        'avi': {'compatible': False, 'note': 'Formato de video - Extraer audio primero'}
+    }
+    
+    return format_info.get(ext, {'compatible': False, 'note': 'Formato no reconocido - Usar WAV'})
+
 # Configuraciones y funciones auxiliares
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'wav', 'mp3', 'mp4', 'avi', 'mov', 'flac', 'm4a', 'ogg', 'webm'}
@@ -82,19 +111,36 @@ def convert_audio_to_wav(file_path):
         return file_path
 
 def transcribe_audio(model, file_path):
-    """Transcribir audio con Whisper"""
+    """Transcribir audio con Whisper - versión robusta"""
     if not model:
         return None, "Modelo Whisper no disponible"
     
     try:
         # Whisper puede manejar muchos formatos sin conversión
-        result = model.transcribe(file_path, language="es", fp16=False)
+        # Usar fp16=False para compatibilidad con CPU
+        result = model.transcribe(
+            file_path, 
+            language="es", 
+            fp16=False,
+            verbose=False
+        )
         return result, None
+    except FileNotFoundError as e:
+        if "ffmpeg" in str(e).lower() or "ffprobe" in str(e).lower():
+            return None, "FFmpeg no está instalado. Usar archivos WAV o instalar FFmpeg."
+        return None, f"Archivo no encontrado: {str(e)}"
     except Exception as e:
         error_msg = str(e)
+        
+        # Manejo específico de errores comunes
         if "ffmpeg" in error_msg.lower():
-            return None, "FFmpeg no está instalado. Instala FFmpeg o usa archivos WAV directamente."
-        return None, f"Error en transcripción: {error_msg}"
+            return None, "Error: FFmpeg requerido para este formato. Usar archivos WAV."
+        elif "decode" in error_msg.lower():
+            return None, "Error: Formato de audio no soportado. Usar WAV, MP3 o M4A."
+        elif "permission" in error_msg.lower():
+            return None, "Error: Sin permisos para acceder al archivo."
+        else:
+            return None, f"Error de transcripción: {error_msg}"
 
 def format_dialogue(segments):
     """Formatear segmentos como diálogo"""
@@ -217,6 +263,12 @@ tab1, tab2, tab3 = st.tabs(["📁 Subir Audio", "📝 Análisis Manual", "📊 R
 with tab1:
     st.header("📁 Dashboard de Subida de Audio")
     
+    # Verificar estado de las dependencias
+    ffmpeg_status = check_ffmpeg_available()
+    
+    if not ffmpeg_status:
+        st.info("💡 **Estado del sistema:** FFmpeg no detectado. Archivos WAV funcionarán perfectamente.")
+    
     uploaded_file = st.file_uploader(
         "Selecciona un archivo de audio:",
         type=['wav', 'mp3', 'mp4', 'avi', 'mov', 'flac', 'm4a', 'ogg', 'webm'],
@@ -224,6 +276,9 @@ with tab1:
     )
     
     if uploaded_file is not None:
+        # Verificar formato de archivo
+        format_info = check_audio_format(uploaded_file.name)
+        
         # Mostrar información del archivo
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -232,6 +287,13 @@ with tab1:
             st.metric("📏 Tamaño", f"{uploaded_file.size / 1024 / 1024:.2f} MB")
         with col3:
             st.metric("📋 Tipo", uploaded_file.type)
+        
+        # Mostrar compatibilidad del formato
+        if format_info['compatible']:
+            st.success(f"✅ **Formato compatible:** {format_info['note']}")
+        else:
+            st.warning(f"⚠️ **Formato problemático:** {format_info['note']}")
+            st.info("💡 **Recomendación:** Convierte el archivo a WAV para mejor compatibilidad")
         
         # Guardar archivo temporalmente
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
@@ -242,27 +304,54 @@ with tab1:
         
         # Procesar transcripción
         if WHISPER_AVAILABLE:
-            if st.button("🎙️ Iniciar Transcripción Profesional", type="primary"):
+            # Botón inteligente según el formato
+            if uploaded_file.name.lower().endswith('.wav'):
+                button_text = "🎙️ Transcribir Audio WAV (Recomendado)"
+                button_type = "primary"
+            else:
+                button_text = "🎙️ Intentar Transcripción (Puede requerir FFmpeg)"
+                button_type = "secondary"
+                
+            if st.button(button_text, type=button_type):
                 with st.spinner("🔄 Procesando audio... Esto puede tomar unos minutos"):
                     # Cargar modelo
                     model = load_whisper_model()
                     
                     if model:
-                        # Convertir audio si es necesario
-                        wav_path = convert_audio_to_wav(temp_path)
-                        
-                        # Transcribir
-                        result, error = transcribe_audio(model, wav_path)
+                        # Intentar transcripción directa
+                        result, error = transcribe_audio(model, temp_path)
                         
                         if result and not error:
                             st.session_state['transcription_result'] = result
                             st.session_state['audio_file'] = uploaded_file.name
-                            st.success("✅ Transcripción completada")
+                            st.success("✅ Transcripción completada exitosamente")
                             st.rerun()
                         else:
-                            st.error(f"❌ Error en transcripción: {error}")
+                            st.error(f"❌ {error}")
+                            
+                            # Mostrar soluciones específicas según el error
+                            if "FFmpeg" in error:
+                                st.info("🔧 **Soluciones para FFmpeg:**")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.markdown("**Opción 1: Instalar FFmpeg**")
+                                    st.code("winget install ffmpeg")
+                                    st.markdown("Luego reinicia VS Code")
+                                with col2:
+                                    st.markdown("**Opción 2: Usar WAV**")
+                                    st.markdown("Convierte tu archivo a WAV:")
+                                    st.markdown("• [Online-Convert.com](https://audio.online-convert.com/es/convertir-a-wav)")
+                                    st.markdown("• [CloudConvert.com](https://cloudconvert.com/mp3-to-wav)")
+                            
+                            elif "formato" in error.lower():
+                                st.info("📄 **Solución de formato:**")
+                                st.markdown("• Convierte el archivo a **WAV** o **MP3**")
+                                st.markdown("• Usa herramientas como Audacity o convertidores online")
+                            
+                            st.markdown("**💡 Mientras tanto, puedes usar el análisis manual en la siguiente pestaña**")
                     else:
                         st.error("❌ No se pudo cargar el modelo Whisper")
+                        st.info("🔄 Reinicia la aplicación si el problema persiste")
         else:
             st.info("💡 **Transcripción automática disponible**")
             st.markdown("**Notas importantes:**")
